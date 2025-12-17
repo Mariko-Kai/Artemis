@@ -24,14 +24,14 @@ class ASREngine:
         # 'small' is good balance for 4GB VRAM
         model_size = "small" 
         
-        logger.info(f"Loading Whisper model '{model_size}' on GPU...")
+        logger.info(f"Loading Whisper model '{model_size}' on CPU...")
         try:
             self.model = WhisperModel(
                 model_size, 
-                device="cuda", 
-                compute_type="int8_float16" # Save memory
+                device="cpu", 
+                compute_type="int8" # Compatible with CPU
             )
-            logger.info("Whisper model loaded successfully.")
+            logger.info("Whisper model loaded successfully on CPU.")
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
             raise e
@@ -46,7 +46,8 @@ class ASREngine:
             segments, info = await asyncio.to_thread(
                 self.model.transcribe, 
                 file_path, 
-                beam_size=5
+                beam_size=5,
+                language="ru"
             )
             
             # segments is a generator, so we must iterate to get the result

@@ -75,8 +75,9 @@ function App() {
     }, []);
 
     // --- Send Logic ---
-    const handleSendMessage = async () => {
-        if (!inputText.trim()) return;
+    const handleSendMessage = async (textOverride) => {
+        const textToSend = (typeof textOverride === 'string') ? textOverride : inputText;
+        if (!textToSend.trim()) return;
 
         let activeSessionId = currentSessionId;
         if (!activeSessionId) {
@@ -84,7 +85,7 @@ function App() {
                 const res = await fetch('/v1/sessions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: inputText.slice(0, 30) || "New Chat" })
+                    body: JSON.stringify({ title: textToSend.slice(0, 30) || "New Chat" })
                 });
                 const session = await res.json();
                 setSessions(prev => [session, ...prev]);
@@ -93,7 +94,7 @@ function App() {
             } catch (e) { return; }
         }
 
-        const userMsg = { role: 'user', content: inputText };
+        const userMsg = { role: 'user', content: textToSend };
         setMessages(prev => [...prev, userMsg]);
         setInputText("");
         setIsLoading(true);
@@ -132,7 +133,8 @@ function App() {
             const res = await fetch('/v1/audio/transcriptions', { method: 'POST', body: formData });
             if (!res.ok) throw new Error("Audio failed");
             const data = await res.json();
-            setInputText(prev => (prev ? `${prev} ${data.text}` : data.text));
+            // Automatically send the transcibed text
+            await handleSendMessage(data.text);
         } catch (err) {
             alert("Transcription failed");
         } finally {
