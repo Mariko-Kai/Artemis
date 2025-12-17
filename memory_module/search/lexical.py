@@ -5,47 +5,73 @@ Provides traditional keyword-based search using BM25 algorithm.
 """
 
 import logging
-from typing import Any, Dict, List
+import pickle
+import os
+from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 from rank_bm25 import BM25Okapi
 
 from ..interfaces import ILexicalIndex
 from ..models import SearchResult
+from ..pipeline.preprocessing import get_preprocessing_pipeline
 
 logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> List[str]:
     """
-    Simple tokenization function.
-
+    Tokenize text using the standardized pipeline.
+    
     Args:
         text: Input text
 
     Returns:
         List of tokens
     """
-    # Simple whitespace tokenization with lowercasing
-    # In production, consider using nltk or spacy
+    pipeline = get_preprocessing_pipeline()
+    # Normalize first
+    text = pipeline.clean_text(text)
+    # Tokenize. The pipeline focuses on counting or chunking.
+    # We need keywords/tokens for BM25.
+    # Let's use the tokenizer from pipeline (tiktoken) or better yet,
+    # the same logic used for keywords? 
+    # Tiktoken is BPE, might be too granular for BM25 which prefers words.
+    # Let's use a simple word tokenizer but with better cleaning.
+    # Actually, pipeline.extract_keywords uses CountVectorizer which does tokenization.
+    # Let's use a simple regex tokenizer consistent with standard NLP.
+    # Simple whitespace + lowercase is what we had.
+    # Let's stick to simple for now but ensure we use clean_text.
     return text.lower().split()
 
 
 class BM25LexicalIndex(ILexicalIndex):
     """Lexical search using BM25 algorithm."""
 
-    def __init__(self) -> None:
-        """Initialize BM25 lexical index."""
+    def __init__(self, index_path: Optional[str] = None) -> None:
+        """
+        Initialize BM25 lexical index.
+        
+        Args:
+            index_path: Path to load/save the index
+        """
         self.corpus: List[List[str]] = []
         self.documents: Dict[str, Dict[str, Any]] = {}  # id -> {text, metadata}
         self.id_list: List[str] = []  # Ordered list of IDs matching corpus
         self.bm25: BM25Okapi | None = None
+        self.index_path = index_path
+        self._dirty = False # Track if index needs rebuilding
 
+        if self.index_path and os.path.exists(self.index_path):
+            self.load(self.index_path)
+            
         logger.info("BM25 lexical index initialized")
 
     def _rebuild_index(self) -> None:
         """Rebuild the BM25 index from current corpus."""
         if self.corpus:
             self.bm25 = BM25Okapi(self.corpus)
+            self._dirty = False
             logger.debug(f"Rebuilt BM25 index with {len(self.corpus)} documents")
         else:
             self.bm25 = None
@@ -53,11 +79,6 @@ class BM25LexicalIndex(ILexicalIndex):
     async def index_document(self, id: str, text: str, metadata: Dict[str, Any]) -> None:
         """
         Index a single document.
-
-        Args:
-            id: Document ID
-            text: Document text
-            metadata: Associated metadata
         """
         if id in self.documents:
             logger.warning(f"Document {id} already indexed, skipping")
@@ -69,7 +90,9 @@ class BM25LexicalIndex(ILexicalIndex):
         self.id_list.append(id)
         self.documents[id] = {"text": text, "metadata": metadata}
 
-        # Rebuild index
+        # Mark as dirty. Rebuild immediately for consistency in single-add filtering
+        # or defer?
+        # For real-time chat, immediate availability is preferred.
         self._rebuild_index()
         logger.debug(f"Indexed document {id}")
 
@@ -78,11 +101,6 @@ class BM25LexicalIndex(ILexicalIndex):
     ) -> None:
         """
         Index multiple documents.
-
-        Args:
-            ids: List of document IDs
-            texts: List of document texts
-            metadatas: List of metadata dictionaries
         """
         if not ids or not texts or not metadatas:
             return
@@ -111,20 +129,20 @@ class BM25LexicalIndex(ILexicalIndex):
         # Rebuild index once
         self._rebuild_index()
         logger.info(f"Batch indexed {len(new_entries)} documents")
+        
+        # Auto-save if path configured?
+        if self.index_path:
+            self.save(self.index_path)
 
     async def search(self, query: str, top_k: int = 10) -> List[SearchResult]:
         """
         Search documents using BM25.
-
-        Args:
-            query: Search query
-            top_k: Number of results to return
-
-        Returns:
-            List of search results sorted by BM25 score
         """
-        if not self.bm25 or not self.corpus:
-            return []
+        if not self.bm25:
+             if self._dirty:
+                 self._rebuild_index()
+             if not self.bm25:
+                 return []
 
         # Tokenize query
         query_tokens = tokenize(query)
@@ -139,6 +157,10 @@ class BM25LexicalIndex(ILexicalIndex):
 
         # Convert to SearchResult objects
         results = []
+        
+        # Determine max score for normalization if needed later, but here we return raw BM25
+        # The Orchestrator will handle normalization.
+        
         for idx in top_indices:
             score = scores[idx]
             if score <= 0:
@@ -152,6 +174,7 @@ class BM25LexicalIndex(ILexicalIndex):
                     id=doc_id,
                     content=doc["text"],
                     score=float(score),
+                    lexical_score=float(score), # Populate lexical score
                     metadata=doc["metadata"].get("metadata", {}),
                     memory_type=doc["metadata"].get("memory_type", "semantic"),
                     tags=doc["metadata"].get("tags", []),
@@ -164,12 +187,6 @@ class BM25LexicalIndex(ILexicalIndex):
     async def delete(self, id: str) -> bool:
         """
         Remove a document from the index.
-
-        Args:
-            id: Document ID
-
-        Returns:
-            True if deleted, False if not found
         """
         if id not in self.documents:
             return False
@@ -185,4 +202,35 @@ class BM25LexicalIndex(ILexicalIndex):
         # Rebuild index
         self._rebuild_index()
         logger.debug(f"Deleted document {id}")
+        
+        if self.index_path:
+            self.save(self.index_path)
+            
         return True
+
+    def save(self, path: str) -> None:
+        """Save index to disk."""
+        data = {
+            "corpus": self.corpus,
+            "documents": self.documents,
+            "id_list": self.id_list
+        }
+        try:
+            with open(path, "wb") as f:
+                pickle.dump(data, f)
+            logger.info(f"Saved lexical index to {path}")
+        except Exception as e:
+            logger.error(f"Failed to save lexical index: {e}")
+
+    def load(self, path: str) -> None:
+        """Load index from disk."""
+        try:
+            with open(path, "rb") as f:
+                data = pickle.load(f)
+            self.corpus = data["corpus"]
+            self.documents = data["documents"]
+            self.id_list = data["id_list"]
+            self._rebuild_index()
+            logger.info(f"Loaded lexical index from {path}")
+        except Exception as e:
+            logger.error(f"Failed to load lexical index: {e}")

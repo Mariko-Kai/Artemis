@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     default_hybrid_weight: float = Field(
         default=0.5, description="Default weight for hybrid search"
     )
+    lexical_index_path: str = Field(
+        default="./memory_module/lexical_index.pkl", description="Path to save BM25 index"
+    )
+    temporal_half_life_hours: float = Field(
+        default=24.0, description="Half-life in hours for temporal decay"
+    )
 
     # API configuration
     api_host: str = Field(default="0.0.0.0", description="API host")

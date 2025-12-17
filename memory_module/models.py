@@ -76,11 +76,19 @@ class SearchResult(BaseModel):
 
     id: UUID = Field(..., description="Memory ID")
     content: str = Field(..., description="Memory content")
-    score: float = Field(..., description="Relevance score")
+    score: float = Field(..., description="Final relevance score (normalized 0-1)")
+    
+    # Hybrid Search Explainability
+    semantic_score: Optional[float] = Field(None, description="Semantic similarity score (0-1)")
+    lexical_score: Optional[float] = Field(None, description="Lexical BM25 score (normalized 0-1)")
+    temporal_score: Optional[float] = Field(None, description="Temporal boost factor (1.0 = no boost)")
+    
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Memory metadata")
     memory_type: MemoryType = Field(..., description="Type of memory")
     tags: List[str] = Field(default_factory=list, description="Memory tags")
     created_at: datetime = Field(..., description="Creation timestamp")
+    
+    matched_keywords: List[str] = Field(default_factory=list, description="Keywords matched in lexical search")
 
     class Config:
         json_schema_extra = {
@@ -88,10 +96,13 @@ class SearchResult(BaseModel):
                 "id": "123e4567-e89b-12d3-a456-426614174000",
                 "content": "Paris is the capital of France",
                 "score": 0.92,
+                "semantic_score": 0.88,
+                "lexical_score": 0.95,
                 "metadata": {"category": "geography"},
                 "memory_type": "semantic",
                 "tags": ["geography", "fact"],
                 "created_at": "2024-01-01T00:00:00Z",
+                "matched_keywords": ["Paris", "France"]
             }
         }
 

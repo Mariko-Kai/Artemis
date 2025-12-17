@@ -6,14 +6,14 @@ This service coordinates embedding generation, storage, and search.
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from uuid import UUID
 
 from .config.settings import Settings
 from .embeddings.service import EmbeddingService
 from .interfaces import IMemoryService
 from .models import MemoryRecord, MemoryType, QueryRequest, QueryResponse, StoreRequest
-from .search.hybrid import hybrid_search
+from .search.hybrid import HybridSearchService
 from .search.lexical import BM25LexicalIndex
 from .search.vector_store import FAISSVectorStore
 from .storage.metadata import MetadataStore
@@ -52,9 +52,15 @@ class MemoryService(IMemoryService):
             faiss_ef_search=settings.faiss_ef_search,
         )
 
-        self.lexical_index = BM25LexicalIndex()
+        self.lexical_index = BM25LexicalIndex(index_path=settings.lexical_index_path)
 
         self.metadata_store = MetadataStore(settings.database_url)
+        
+        self.hybrid_service = HybridSearchService(
+            settings=settings,
+            vector_store=self.vector_store,
+            lexical_index=self.lexical_index
+        )
 
         logger.info("Memory service initialized successfully")
 
@@ -64,7 +70,11 @@ class MemoryService(IMemoryService):
         logger.info("Memory service initialization complete")
 
     async def store_memory(
-        self, content: str, metadata: Optional[Dict[str, Any]] = None
+        self, 
+        content: str, 
+        metadata: Optional[Dict[str, Any]] = None,
+        tags: Optional[List[str]] = None,
+        memory_type: MemoryType = MemoryType.SEMANTIC
     ) -> MemoryRecord:
         """
         Store a new memory.
@@ -79,6 +89,8 @@ class MemoryService(IMemoryService):
         Args:
             content: Memory content
             metadata: Optional metadata
+            tags: Optional tags
+            memory_type: Memory type
 
         Returns:
             Stored memory record
@@ -87,6 +99,8 @@ class MemoryService(IMemoryService):
         memory = MemoryRecord(
             content=content,
             metadata=metadata or {},
+            tags=tags or [],
+            memory_type=memory_type
         )
 
         # Generate embedding
@@ -195,18 +209,23 @@ class MemoryService(IMemoryService):
         # Generate query embedding
         query_embedding = await self.embedding_service.embed(request.query)
 
+        # Prepare filters
+        filters = request.filters or {}
+        
         # Perform hybrid search
-        results = await hybrid_search(
-            query_vector=query_embedding,
+        results = await self.hybrid_service.search(
             query_text=request.query,
-            vector_store=self.vector_store,
-            lexical_index=self.lexical_index,
+            query_vector=query_embedding,
             top_k=request.top_k,
+            filters=filters,
             hybrid_weight=request.hybrid_weight,
-            use_rrf=True,  # Use Reciprocal Rank Fusion
         )
 
-        # Apply filters if provided
+        # Apply post-filters if provided (Hybrid service handles semantic filters, but we do explicit check here too?)
+        # FAISS search supports filters, but lexical search currently doesn't (unless we add it to BM25 search).
+        # Since Hybrid Service merges them, we might get lexical results that don't match filters.
+        # We should apply post-filtering here to be safe.
+        
         if request.memory_types:
             type_values = [t.value for t in request.memory_types]
             results = [r for r in results if r.memory_type.value in type_values]
@@ -290,4 +309,6 @@ class MemoryService(IMemoryService):
     async def save_indexes(self) -> None:
         """Save indexes to disk for persistence."""
         await self.vector_store.save(self.settings.faiss_index_path)
+        if self.settings.lexical_index_path:
+             self.lexical_index.save(self.settings.lexical_index_path)
         logger.info("Indexes saved to disk")
