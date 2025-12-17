@@ -19,3 +19,9 @@ infra/venv/
 # System
 .DS_Store
 Thumbs.db
+
+# Recording
+*.webm
+
+# Database
+sessions.db

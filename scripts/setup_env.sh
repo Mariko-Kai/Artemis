@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# Determine project root (one level up from scripts directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+echo "Project root determined as: $PROJECT_ROOT"
+cd "$PROJECT_ROOT"
+
 # Enable non-free repositories if on Debian (required for nvidia-cuda-toolkit)
 if grep -q "Debian" /etc/issue || [ -f /etc/debian_version ]; then
     sudo sed -i 's/main$/main contrib non-free non-free-firmware/g' /etc/apt/sources.list
@@ -10,10 +17,11 @@ fi
 sudo apt-get update
 
 # Install build dependencies
-sudo apt-get install -y build-essential cmake nvidia-cuda-toolkit ffmpeg
+sudo apt-get install -y build-essential cmake ffmpeg
 
-# Create virtual environment if it doesn't exist
+# Create virtual environment if it doesn't exist in root
 if [ ! -d "venv" ]; then
+    echo "Creating virtual environment in $PROJECT_ROOT/venv..."
     python3 -m venv venv
     echo "Virtual environment created."
 fi
