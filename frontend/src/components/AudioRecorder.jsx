@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Mic, Square } from 'lucide-react';
+import clsx from 'clsx';
 
 const AudioRecorder = ({ onAudioRecorded, disabled }) => {
     const [isRecording, setIsRecording] = useState(false);
@@ -9,29 +10,24 @@ const AudioRecorder = ({ onAudioRecorded, disabled }) => {
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorderRef.current = new MediaRecorder(stream);
+            mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
             chunksRef.current = [];
 
             mediaRecorderRef.current.ondataavailable = (e) => {
-                if (e.data.size > 0) {
-                    chunksRef.current.push(e.data);
-                }
+                if (e.data.size > 0) chunksRef.current.push(e.data);
             };
 
             mediaRecorderRef.current.onstop = () => {
                 const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
                 onAudioRecorded(blob);
-                chunksRef.current = [];
-
-                // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());
             };
 
             mediaRecorderRef.current.start();
             setIsRecording(true);
         } catch (err) {
-            console.error("Error accessing microphone:", err);
-            alert("Could not access microphone.");
+            console.error("Mic access denied", err);
+            alert("Could not access microphone");
         }
     };
 
@@ -46,13 +42,16 @@ const AudioRecorder = ({ onAudioRecorded, disabled }) => {
         <button
             onClick={isRecording ? stopRecording : startRecording}
             disabled={disabled}
-            className={`p-3 rounded-full transition-colors ${isRecording
-                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed'
-                }`}
-            title={isRecording ? "Stop Recording" : "Start Recording"}
+            className={clsx(
+                "p-2 rounded-full transition-all",
+                isRecording
+                    ? "bg-red-500 text-white animate-pulse shadow-lg ring-4 ring-red-100"
+                    : "hover:bg-gray-200 text-gray-600",
+                disabled && "opacity-50 cursor-not-allowed"
+            )}
+            title="Voice Input"
         >
-            {isRecording ? <Square size={24} /> : <Mic size={24} />}
+            {isRecording ? <Square size={20} fill="currentColor" /> : <Mic size={20} />}
         </button>
     );
 };
