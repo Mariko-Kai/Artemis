@@ -16,7 +16,7 @@ from .models import MemoryRecord, MemoryType, QueryRequest, QueryResponse, Store
 from .search.hybrid import HybridSearchService
 from .search.lexical import BM25LexicalIndex
 from .search.vector_store import FAISSVectorStore
-from .storage.metadata import MetadataStore
+from .storage.postgresql import PostgreSQLMetadataStore
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class MemoryService(IMemoryService):
 
         self.lexical_index = BM25LexicalIndex(index_path=settings.lexical_index_path)
 
-        self.metadata_store = MetadataStore(settings.database_url)
+        self.metadata_store = PostgreSQLMetadataStore(settings.database_url)
         
         self.hybrid_service = HybridSearchService(
             settings=settings,

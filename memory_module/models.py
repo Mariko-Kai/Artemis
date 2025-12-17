@@ -40,9 +40,20 @@ class MemoryRecord(BaseModel):
     )
     tags: List[str] = Field(default_factory=list, description="Tags for categorization")
     source: Optional[str] = Field(default=None, description="Source of the memory")
+    channel_id: Optional[str] = Field(default=None, description="Channel or Chat ID")
     confidence: Optional[float] = Field(
         default=None, ge=0.0, le=1.0, description="Confidence score"
     )
+    
+    # Phase 3 Enhancements
+    content_hash: Optional[str] = Field(default=None, description="SHA256 hash of content")
+    version: int = Field(default=1, description="Version number for OCC")
+    archived: bool = Field(default=False, description="Archival status")
+    importance: float = Field(default=0.0, description="Importance score")
+    entities: Dict[str, Any] = Field(default_factory=dict, description="Extracted entities")
+    ref_id: List[str] = Field(default_factory=list, description="Referenced memory IDs")
+    part_of_message_id: Optional[UUID] = Field(default=None, description="Parent message ID if chunked")
+    chunk_index: Optional[int] = Field(default=None, description="Index of chunk in message")
 
     @field_validator("tags")
     @classmethod
