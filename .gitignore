@@ -25,3 +25,17 @@ Thumbs.db
 
 # Database
 sessions.db
+
+# Memory Module
+memory_module/__pycache__/
+memory_module/**/__pycache__/
+memory_module/*.db
+memory_module/memory.db
+memory_module/faiss_index/
+memory_module/.env
+memory_module/.pytest_cache/
+memory_module/.mypy_cache/
+memory_module/.coverage
+memory_module/.ruff_cache/
+memory_module/htmlcov/
+memory_module/**/*.pyc

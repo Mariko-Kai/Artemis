@@ -1,0 +1,51 @@
+# Memory Module Configuration
+
+# Embedding settings
+embedding:
+  model_name: "Snowflake/snowflake-arctic-embed-m"
+  device: "cpu"  # Use CPU to avoid VRAM constraints
+  vector_dim: 768
+  batch_size: 32
+
+# Database settings
+database:
+  url: "sqlite+aiosqlite:///./memory_module/memory.db"
+
+# Vector store settings
+vector_store:
+  faiss_index_path: "./memory_module/faiss_index"
+  faiss_index_type: "Flat"  # Use Flat for simplicity and accuracy
+
+# Cache settings (optional, can be disabled by not setting redis_url)
+cache:
+  redis_url: null  # Set to redis://localhost:6379 to enable
+  ttl: 3600
+
+# Search settings
+search:
+  default_top_k: 10
+  max_top_k: 100
+  default_hybrid_weight: 0.5  # 0.5 = equal weight to vector and lexical
+
+# API settings
+api:
+  host: "0.0.0.0"
+  port: 8001
+  reload: false
+  cors_origins:
+    - "http://localhost:5173"  # Artemis frontend
+    - "http://localhost:3000"
+
+# Logging settings
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Worker settings
+workers:
+  enable_background_workers: true
+  queue_size: 100
+
+# Performance settings
+performance:
+  max_concurrent_requests: 10

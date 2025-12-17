@@ -1,0 +1,368 @@
+# Memory Module
+
+A comprehensive semantic memory and hybrid search system for the Artemis AI agent, featuring Snowflake Arctic Embed 2 embeddings, FAISS vector search, and BM25 lexical search.
+
+## Features
+
+- **Semantic Search**: Powered by Snowflake Arctic Embed 2 model
+- **Vector Search**: FAISS-based similarity search with CPU optimization
+- **Lexical Search**: BM25 algorithm for keyword-based retrieval
+- **Hybrid Search**: Combines vector and lexical search using Reciprocal Rank Fusion (RRF)
+- **Metadata Storage**: SQLAlchemy with async support (SQLite/PostgreSQL)
+- **RESTful API**: FastAPI endpoints for memory management
+- **Type Safety**: Full type hints and Pydantic v2 validation
+- **Testing**: Comprehensive unit and integration tests
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph "API Layer"
+        A[FastAPI Application] --> B[Routes]
+        B --> C[Dependencies]
+    end
+
+    subgraph "Service Layer"
+        D[Memory Service] --> E[Embedding Service]
+        D --> F[Vector Store]
+        D --> G[Lexical Index]
+        D --> H[Metadata Store]
+    end
+
+    subgraph "Search Layer"
+        F --> I[FAISS Index]
+        G --> J[BM25 Index]
+        K[Hybrid Search] --> F
+        K --> G
+    end
+
+    subgraph "Storage Layer"
+        H --> L[SQLAlchemy]
+        L --> M[(SQLite/PostgreSQL)]
+        I --> N[FAISS Files]
+    end
+
+    subgraph "Embedding Layer"
+        E --> O[Arctic Embed Model]
+        O --> P[sentence-transformers]
+    end
+
+    B --> D
+    D --> K
+
+    style A fill:#4CAF50
+    style D fill:#2196F3
+    style K fill:#FF9800
+    style M fill:#9C27B0
+```
+
+## Installation
+
+### Prerequisites
+
+- Python 3.11+
+- pip
+
+### Setup
+
+1. **Navigate to the memory module directory:**
+
+```bash
+cd memory_module
+```
+
+2. **Install dependencies:**
+
+```bash
+pip install -r requirements.txt
+```
+
+3. **Configure environment (optional):**
+
+```bash
+cp .env.example .env
+# Edit .env with your settings
+```
+
+4. **Initialize the database:**
+
+The database will be automatically created when you first run the application.
+
+## Quick Start
+
+### Running the API Server
+
+```bash
+# From the memory_module directory
+python -m api.app
+
+# Or using uvicorn directly
+uvicorn api.app:app --reload --host 0.0.0.0 --port 8001
+```
+
+The API will be available at `http://localhost:8001`
+
+### API Documentation
+
+Once the server is running, visit:
+
+- **Interactive API docs**: `http://localhost:8001/docs`
+- **Alternative docs**: `http://localhost:8001/redoc`
+
+### Basic Usage Examples
+
+#### Store a Memory
+
+```bash
+curl -X POST http://localhost:8001/api/v1/memories \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Paris is the capital of France",
+    "tags": ["geography", "europe"],
+    "memory_type": "semantic"
+  }'
+```
+
+#### Search Memories
+
+```bash
+curl -X POST http://localhost:8001/api/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "capital of France",
+    "top_k": 5,
+    "hybrid_weight": 0.7
+  }'
+```
+
+#### Get Memory by ID
+
+```bash
+curl http://localhost:8001/api/v1/memories/{memory_id}
+```
+
+#### Delete Memory
+
+```bash
+curl -X DELETE http://localhost:8001/api/v1/memories/{memory_id}
+```
+
+## Configuration
+
+Configuration can be provided via:
+
+1. **Environment variables** (prefix: `MM_`)
+2. **YAML configuration file** (set `MM_CONFIG_PATH`)
+3. **Default values** in `config/settings.py`
+
+### Key Configuration Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MM_EMBEDDING_MODEL_NAME` | `Snowflake/snowflake-arctic-embed-m` | Hugging Face model name |
+| `MM_EMBEDDING_DEVICE` | `cpu` | Device for embeddings (cpu/cuda) |
+| `MM_DATABASE_URL` | `sqlite+aiosqlite:///./memory.db` | Database connection URL |
+| `MM_FAISS_INDEX_PATH` | `./faiss_index` | Path to FAISS index |
+| `MM_API_PORT` | `8001` | API server port |
+| `MM_LOG_LEVEL` | `INFO` | Logging level |
+
+See [.env.example](.env.example) for all options.
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest -v
+
+# Run unit tests only
+pytest tests/unit/ -v
+
+# Run integration tests
+pytest tests/integration/ -v -m integration
+
+# Run with coverage
+pytest --cov=memory_module --cov-report=html
+```
+
+### Code Quality
+
+```bash
+# Format code
+black .
+
+# Lint code
+ruff check .
+
+# Type checking
+mypy memory_module
+```
+
+### Database Migrations
+
+```bash
+# Create a new migration
+alembic revision --autogenerate -m "description"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback migration
+alembic downgrade -1
+```
+
+## Project Structure
+
+```
+memory_module/
+├── embeddings/           # Snowflake Arctic Embed 2 integration
+│   ├── arctic.py        # Model wrapper
+│   └── service.py       # Embedding service
+├── search/              # Hybrid search implementation
+│   ├── vector_store.py  # FAISS vector search
+│   ├── lexical.py       # BM25 lexical search
+│   └── hybrid.py        # Hybrid fusion (RRF)
+├── storage/             # Database layer
+│   ├── models.py        # SQLAlchemy ORM models
+│   ├── metadata.py      # Metadata store
+│   └── migrations/      # Alembic migrations
+├── api/                 # FastAPI endpoints
+│   ├── app.py          # Application factory
+│   ├── routes.py       # API routes
+│   └── dependencies.py  # Dependency injection
+├── workers/             # Background jobs
+│   └── embedding_worker.py
+├── config/              # Configuration
+│   ├── settings.py     # Pydantic Settings
+│   └── config.yaml     # Default config
+├── tests/               # Test suite
+│   ├── unit/           # Unit tests
+│   └── integration/    # Integration tests
+├── interfaces.py        # Abstract base classes
+├── models.py           # Pydantic data models
+├── service.py          # High-level orchestration
+├── requirements.txt    # Dependencies
+└── README.md           # This file
+```
+
+## API Reference
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/memories` | Store a new memory |
+| POST | `/api/v1/memories/batch` | Store multiple memories |
+| GET | `/api/v1/memories/{id}` | Retrieve memory by ID |
+| DELETE | `/api/v1/memories/{id}` | Delete a memory |
+| POST | `/api/v1/search` | Search memories (hybrid) |
+| GET | `/api/v1/stats` | Get service statistics |
+| GET | `/health` | Health check |
+
+### Data Models
+
+#### MemoryRecord
+
+```python
+{
+  "id": "uuid",
+  "content": "string",
+  "metadata": {},
+  "memory_type": "semantic|episodic|long_term|short_term",
+  "tags": ["string"],
+  "source": "string",
+  "confidence": 0.0-1.0,
+  "created_at": "datetime",
+  "updated_at": "datetime"
+}
+```
+
+#### QueryRequest
+
+```python
+{
+  "query": "string",
+  "top_k": 10,
+  "hybrid_weight": 0.5,
+  "memory_types": ["semantic"],
+  "tags": ["tag1"],
+  "min_score": 0.5
+}
+```
+
+## Performance
+
+- **Embedding Speed**: ~50-100 texts/second (CPU)
+- **Search Latency**: <100ms for datasets up to 10K memories
+- **Memory Usage**: ~2GB RAM (includes embedding model)
+- **Storage**: ~1KB per memory record
+
+## Integration with Artemis
+
+To integrate with the main Artemis backend:
+
+```python
+from memory_module import MemoryService
+from memory_module.config.settings import get_settings
+
+# Initialize service
+settings = get_settings()
+memory_service = MemoryService(settings)
+await memory_service.initialize()
+
+# Store chat message as memory
+await memory_service.store_memory(
+    content="User asked about Python",
+    metadata={"session_id": session_id}
+)
+
+# Search for relevant context
+from memory_module.models import QueryRequest
+
+request = QueryRequest(
+    query="Tell me about Python",
+    top_k=5
+)
+response = await memory_service.search_memories(request)
+```
+
+## Troubleshooting
+
+### Issue: Model download fails
+
+**Solution**: Ensure you have internet connectivity. The model will be automatically downloaded from Hugging Face on first use.
+
+### Issue: Out of memory
+
+**Solution**: Reduce batch size in configuration or use a smaller embedding model:
+
+```bash
+MM_EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+MM_BATCH_SIZE=16
+```
+
+### Issue: Slow search performance
+
+**Solution**: 
+1. Use FAISS IVF index for larger datasets (>10K records)
+2. Reduce `top_k` in search requests
+3. Consider using CUDA if available
+
+## Contributing
+
+1. Run tests before submitting PR
+2. Follow PEP 8 style guide
+3. Add type hints to all functions
+4. Update tests for new features
+
+## License
+
+MIT License - Part of the Artemis project
+
+## Related Documentation
+
+- [Snowflake Arctic Embed](https://huggingface.co/Snowflake/snowflake-arctic-embed-m)
+- [FAISS Documentation](https://github.com/facebookresearch/faiss)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Pydantic Documentation](https://docs.pydantic.dev/)

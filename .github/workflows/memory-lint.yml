@@ -1,0 +1,44 @@
+name: Memory Module - Lint
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'memory_module/**'
+      - '.github/workflows/memory-lint.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'memory_module/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./memory_module
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install black ruff mypy
+          pip install -r requirements.txt
+
+      - name: Run Black
+        run: black --check .
+
+      - name: Run Ruff
+        run: ruff check .
+
+      - name: Run MyPy
+        run: mypy memory_module --config-file ../pyproject.toml
+        continue-on-error: true  # Don't fail on type errors initially
