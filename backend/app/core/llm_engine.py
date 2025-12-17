@@ -1,6 +1,8 @@
 from llama_cpp import Llama
 from app.core.config import settings
+from app.core.global_lock import gpu_lock
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 

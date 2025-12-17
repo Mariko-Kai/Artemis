@@ -10,7 +10,7 @@ fi
 sudo apt-get update
 
 # Install build dependencies
-sudo apt-get install -y build-essential cmake nvidia-cuda-toolkit
+sudo apt-get install -y build-essential cmake nvidia-cuda-toolkit ffmpeg
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
@@ -29,6 +29,9 @@ pip install --upgrade pip
 CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=75" pip install llama-cpp-python
 
 # Install other dependencies
-pip install fastapi uvicorn pydantic-settings huggingface_hub
+pip install fastapi uvicorn pydantic-settings huggingface_hub faster-whisper langchain langchain-community playwright duckduckgo-search
+
+# Install Playwright browsers
+playwright install chromium
 
 echo "Setup complete. To activate the environment, run 'source venv/bin/activate'"
