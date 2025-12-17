@@ -42,9 +42,14 @@ class MemoryService(IMemoryService):
         self.vector_dim = self.embedding_service.get_dimension()
 
         self.vector_store = FAISSVectorStore(
-            dimension=self.vector_dim,
+            dimension=settings.mrl_index_dim if settings.enable_mrl else self.vector_dim,
             index_path=settings.faiss_index_path,
+            database_url=settings.database_url,
             index_type=settings.faiss_index_type,
+            mrl_enabled=settings.enable_mrl,
+            storage_dimension=settings.mrl_storage_dim,
+            faiss_m=settings.faiss_m,
+            faiss_ef_search=settings.faiss_ef_search,
         )
 
         self.lexical_index = BM25LexicalIndex()

@@ -1,80 +1,35 @@
 """
-Embedding service implementation using Arctic Embed.
-
-Implements the IEmbeddingService interface with caching support.
+Embedding service implementation.
 """
 
 import logging
-from functools import lru_cache
-from typing import List
+from typing import List, Optional, Any
 
 from ..config.settings import Settings
-from ..interfaces import IEmbeddingService
-from .arctic import get_arctic_model
+from .arctic import ArcticEmbedService
 
 logger = logging.getLogger(__name__)
 
+class EmbeddingService(ArcticEmbedService):
+    """
+    Embedding service implementation.
+    Inherits from ArcticEmbedService which implements IEmbeddingService.
+    """
 
-class EmbeddingService(IEmbeddingService):
-    """Embedding service using Snowflake Arctic Embed."""
-
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Optional[Settings] = None):
         """
         Initialize the embedding service.
-
-        Args:
-            settings: Configuration settings
+        args are accepted for compatibility but configuration is loaded from global settings
+        in the parent class unless we refactor parent.
         """
-        self.settings = settings
-        self.model = get_arctic_model(
-            model_name=settings.embedding_model_name,
-            device=settings.embedding_device,
-        )
-        logger.info("Embedding service initialized")
-
-    async def embed(self, text: str) -> List[float]:
-        """
-        Generate embedding for a single text.
-
-        Args:
-            text: Input text
-
-        Returns:
-            Embedding vector
-        """
-        # Use cached version for duplicate texts
-        return self._embed_cached(text)
-
-    @lru_cache(maxsize=1000)
-    def _embed_cached(self, text: str) -> List[float]:
-        """
-        Cached embedding generation.
-
-        Args:
-            text: Input text
-
-        Returns:
-            Embedding vector
-        """
-        return self.model.encode(text)
-
-    async def batch_embed(self, texts: List[str]) -> List[List[float]]:
-        """
-        Generate embeddings for multiple texts.
-
-        Args:
-            texts: List of input texts
-
-        Returns:
-            List of embedding vectors
-        """
-        return self.model.encode_batch(texts, batch_size=self.settings.batch_size)
-
-    def get_dimension(self) -> int:
-        """
-        Get the embedding dimension.
-
-        Returns:
-            Dimension of embedding vectors
-        """
-        return self.model.dimension
+        super().__init__()
+        # If settings were passed, we could theoretically override self.* properties 
+        # but ArcticEmbedService loads from get_settings(). 
+        # Ideally we should respect passed settings.
+        if settings:
+             self.model_name = settings.embedding_model_name
+             self.device = settings.embedding_device
+             self.default_dim = settings.vector_dim
+             # ... other settings if needed
+        
+        logger.info("Embedding service initialized (Wrapper)")

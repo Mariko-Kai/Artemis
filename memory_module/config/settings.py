@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     faiss_index_type: str = Field(
         default="Flat", description="FAISS index type (Flat, IVF, HNSW)"
     )
+    faiss_m: int = Field(default=32, description="HNSW M parameter")
+    faiss_ef_search: int = Field(default=64, description="HNSW efSearch parameter")
+    
+    # MRL configuration
+    enable_mrl: bool = Field(default=True, description="Enable MRL optimization")
+    mrl_index_dim: int = Field(default=512, description="Dimension for FAISS index (truncated)")
+    mrl_storage_dim: int = Field(default=768, description="Dimension for full vector storage")
 
     # Redis configuration
     redis_url: Optional[str] = Field(

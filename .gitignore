@@ -24,6 +24,7 @@ Thumbs.db
 *.webm
 
 # Database
+*.db
 sessions.db
 
 # Memory Module

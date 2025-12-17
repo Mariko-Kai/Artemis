@@ -53,14 +53,20 @@ def temp_index_path() -> Generator[str, None, None]:
 @pytest.fixture
 def test_settings(temp_db_path: str, temp_index_path: str) -> Settings:
     """Create test settings with temporary paths."""
+    # Use local file to avoid path syntax issues
+    import os
+    db_path = os.path.abspath("test_debug.db").replace("\\", "/")
     return Settings(
-        database_url=f"sqlite+aiosqlite:///{temp_db_path}",
+        database_url=f"sqlite+aiosqlite:///{db_path}",
         faiss_index_path=temp_index_path,
         embedding_model_name="sentence-transformers/all-MiniLM-L6-v2",  # Smaller model for testing
         vector_dim=384,
         batch_size=8,
         redis_url=None,  # Disable Redis for tests
         log_level="DEBUG",
+        enable_mrl=True,
+        mrl_index_dim=128,
+        mrl_storage_dim=384,
     )
 
 
