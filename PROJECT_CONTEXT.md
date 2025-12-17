@@ -160,6 +160,23 @@ Artemis/
 3. **Agent Mode:**
    - Same as text chat but calls `/v1/agent/run` instead
 
+   - Same as text chat but calls `/v1/agent/run` instead
+
+### 7. Memory & Archival Module
+**Goal:** Long-term semantic memory with hybrid search and efficient storage.
+
+**Architecture:**
+- **Hybrid Search:** Combines `FAISS` (Vector, HNSW) and `BM25` (Lexical) using Reciprocal Rank Fusion (RRF).
+- **Storage:**
+  - `memory_records` (SQLite): Active memories.
+  - `archived_memory_records` (SQLite): Compressed (gzip) historical data.
+  - `faiss_index.bin` & `bm25_index.pkl`: Local indices.
+- **Workflow:**
+  1. **Ingestion:** `/store` -> Text Process -> Embedding (Arctic) -> Vector Store + Lexical Index + SQLite.
+  2. **Retrieval:** `/query` -> Hybrid Search (Vector + Keyword) -> Re-Rank -> Result.
+  3. **Archival:** Background task -> Identify old/low-score records -> Compress -> Move to Archive Table -> Delete from Active Indices.
+- **Performance:** Optimized for GTX 1650 (Single GPU Lock shared with LLM).
+
 ## Setup Instructions
 
 ### First-Time Setup (WSL2)

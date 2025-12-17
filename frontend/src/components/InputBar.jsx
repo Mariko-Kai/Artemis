@@ -65,6 +65,15 @@ const InputBar = ({
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {/* Search Memory Button (New) */}
+                        <button
+                            onClick={() => console.log("Memory search not fully wired to sidebar yet")}
+                            className="p-2 rounded-full hover:bg-gray-200 text-gray-600 transition-colors"
+                            title="Search in Memory"
+                        >
+                            <Sparkles size={20} className="text-purple-500" />
+                        </button>
+
                         <AudioRecorder onAudioRecorded={onAudioRecorded} disabled={isLoading} />
 
                         {inputText.trim() && (

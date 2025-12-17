@@ -11,6 +11,7 @@ class ChatSession(Base):
     title = Column(String, default="New Chat")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_activity = Column(DateTime, default=datetime.utcnow, index=True)
 
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
 

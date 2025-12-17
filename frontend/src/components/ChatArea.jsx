@@ -54,6 +54,23 @@ const MessageItem = memo(({ msg }) => {
                         </ReactMarkdown>
                     </div>
                 )}
+
+                {/* Related Memories */}
+                {msg.relatedMemories && msg.relatedMemories.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                            <Terminal size={12} /> Related Memories
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                            {msg.relatedMemories.map(mem => (
+                                <div key={mem.id} className="min-w-[200px] w-[200px] bg-white border border-gray-200 p-2 rounded text-xs text-gray-600 shadow-sm">
+                                    <p className="line-clamp-2 mb-1">{mem.content}</p>
+                                    <span className="text-[10px] text-blue-500">{(mem.score * 100).toFixed(0)}% relevance</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

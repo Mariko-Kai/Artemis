@@ -37,7 +37,7 @@ pip install --upgrade pip
 CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=75" pip install llama-cpp-python
 
 # Install other dependencies
-pip install fastapi uvicorn pydantic-settings huggingface_hub faster-whisper langchain langchain-community playwright duckduckgo-search
+pip install fastapi uvicorn pydantic-settings huggingface_hub faster-whisper langchain langchain-community playwright duckduckgo-search sentence-transformers faiss-cpu rank_bm25 sqlalchemy aiosqlite alembic
 
 # Install Playwright browsers
 playwright install chromium

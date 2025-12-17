@@ -116,7 +116,17 @@ function App() {
             const data = await res.json();
             const content = useAgent ? data.answer : data.choices[0].message.content;
 
-            setMessages(prev => [...prev, { role: 'assistant', content }]);
+            // Capture related memories if present
+            const relatedMemories = data.related_memories || [];
+
+            setMessages(prev => [
+                ...prev,
+                {
+                    role: 'assistant',
+                    content,
+                    relatedMemories: relatedMemories // Attach to message
+                }
+            ]);
             fetchSessions(); // Refresh list for titles
         } catch (err) {
             setMessages(prev => [...prev, { role: 'assistant', content: "Error: " + err.message }]);
@@ -147,11 +157,8 @@ function App() {
             <Sidebar
                 sessions={sessions}
                 currentSessionId={currentSessionId}
-                onNewChat={createSession}
+                onNewSession={createSession}
                 onSelectSession={selectSession}
-                onDeleteSession={deleteSession}
-                isCollapsed={isSidebarCollapsed}
-                toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             />
 
             <main className="flex-1 flex flex-col h-full bg-white relative">

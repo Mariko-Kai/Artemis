@@ -10,6 +10,8 @@ from app.core.llm_engine import llm_engine
 from app.core.global_lock import gpu_lock
 from app.db.database import engine, Base, get_db, SessionLocal
 from app.db.models import ChatSession, ChatMessage as DbMessage
+from app.db.models import ChatSession, ChatMessage as DbMessage
+from app.db.memory_models import MemoryRecordDB, VectorMapping, AuditLog, ConfigVersion, JobQueue, ArchivedMemoryRecordDB
 from app.routers import sessions
 
 import shutil
@@ -24,7 +26,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json")
 
 # Include Routers
+# Include Routers
 app.include_router(sessions.router, prefix=settings.API_V1_STR, tags=["sessions"])
+from app.routers import memory
+app.include_router(memory.router, prefix=f"{settings.API_V1_STR}/memory", tags=["memory"])
 
 class AgentRunRequest(BaseModel):
     goal: str
@@ -105,41 +110,98 @@ async def generate_title(session_id: str, first_msg: str):
         logger.error(f"Title generation failed: {e}")
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     Base.metadata.create_all(bind=engine)
     llm_engine.load_model()
+    # Initialize Memory Service
+    from app.services.memory_service import memory_service
+    await memory_service.initialize()
+    # Start Summarization Worker
+    await summarization_worker.start()
+    # Start Archival Service
+    from app.services.archival_service import archival_service
+    await archival_service.start_cleanup_task()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await summarization_worker.stop()
+    from app.services.archival_service import archival_service
+    await archival_service.stop_cleanup_task()
 
 @app.post(f"{settings.API_V1_STR}/chat/completions")
 async def chat_completions(request: ChatCompletionRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     model = llm_engine.get_model()
+    from app.services.memory_service import memory_service
     
     try:
+        # Update Activity Timestamp
+        if request.session_id:
+            try:
+                session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+                if session:
+                    session.last_activity = datetime.utcnow()
+                    db.commit()
+            except Exception as e:
+                logger.error(f"Failed to update activity: {e}")
+
         current_messages = [msg.dict(exclude_none=True) for msg in request.messages]
         messages_for_inference = []
+        
+        # Memory Context
+        memory_context = ""
+        user_msg_content = ""
+        for msg in current_messages:
+            if msg.get("role") == "user":
+                user_msg_content = msg.get("content")
+
+        if user_msg_content:
+            # Query memories (async)
+            memories = await memory_service.query_memory(user_msg_content, session_id=request.session_id)
+            if memories:
+                memory_block = "\n".join([f"- {m['content']} (from {m['created_at'].strftime('%Y-%m-%d')})" for m in memories])
+                memory_context = f"\nRelevant previous context:\n{memory_block}\n"
+                logger.info(f"Injected {len(memories)} memories")
 
         if request.session_id:
             # 1. Load History
             history = get_context_window(db, request.session_id, current_messages)
-            messages_for_inference = history + current_messages
+            
+            # Prepend memory to the very first system message or create one?
+            # Or just prepend to the whole list as a 'system' message?
+            # Ideally, detailed system prompt -> memories -> history -> new message
+            
+            # Simple strategy: Add a system message with memories at the start
+            final_messages = []
+            if memory_context:
+                final_messages.append({"role": "system", "content": memory_context})
+                
+            final_messages.extend(history)
+            final_messages.extend(current_messages)
+            
+            messages_for_inference = final_messages
             
             # 2. Save User Message(s)
-            user_msg_content = ""
             for msg in current_messages:
                 if msg.get("role") == "user":
-                    user_msg_content = msg.get("content")
-                    save_message(db, request.session_id, "user", user_msg_content)
+                    save_message(db, request.session_id, "user", msg.get("content"))
+                    # Auto-save to memory
+                    background_tasks.add_task(
+                        memory_service.store_memory,
+                        session_id=request.session_id,
+                        content=msg.get("content"),
+                        role="user",
+                        importance=0.7
+                    )
                     
             # 3. Check for Auto-Titling
-            # If history was empty, this is the first interaction
             if not history and user_msg_content:
                 background_tasks.add_task(generate_title, request.session_id, user_msg_content)
 
         else:
-             messages_for_inference = current_messages
+            messages_for_inference = current_messages
 
         logger.info("Acquiring GPU lock for LLM inference...")
         async with gpu_lock:
-            # We run the synchronous Llama inference in a thread
             response = await asyncio.to_thread(
                 model.create_chat_completion,
                 messages=messages_for_inference,
@@ -157,6 +219,25 @@ async def chat_completions(request: ChatCompletionRequest, background_tasks: Bac
         if request.session_id and not request.stream:
             content = response["choices"][0]["message"]["content"]
             save_message(db, request.session_id, "assistant", content)
+            
+            # Auto-save to memory
+            background_tasks.add_task(
+                memory_service.store_memory,
+                session_id=request.session_id,
+                content=content,
+                role="assistant",
+                importance=0.5 # Default, tools might boost this
+            )
+            
+            # Inject related memories into response for Frontend UI
+            if memories:
+                # Add a custom field to the first choice's message or top level
+                # OpenAI spec is strict, but extra fields usually ignored by strict clients, useful for us.
+                # Let's add to top level 'context'
+                response["related_memories"] = [
+                    {"id": m["id"], "content": m["content"], "score": m["score"]} 
+                    for m in memories
+                ]
             
         return response
     except Exception as e:
