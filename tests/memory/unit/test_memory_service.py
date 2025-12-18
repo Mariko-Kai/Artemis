@@ -29,7 +29,8 @@ async def test_store_memory(memory_service):
     mock_record = mmodels.MemoryRecord(
         id=target_id,
         content="Test memory",
-        metadata={"role": "user"}
+        metadata={"role": "user"},
+        status=mmodels.MemoryStatus.PENDING_SUMMARY
     )
     memory_service.metadata_store.save = AsyncMock(return_value=mock_record)
     
@@ -40,7 +41,8 @@ async def test_store_memory(memory_service):
     
     assert result.id == target_id
     assert isinstance(result, mmodels.MemoryRecord)
-    assert memory_service.embedding_service.embed.called
+    assert not memory_service.embedding_service.embed.called
+    assert result.status == mmodels.MemoryStatus.PENDING_SUMMARY
     assert memory_service.metadata_store.save.called
 
 @pytest.mark.asyncio

@@ -15,6 +15,12 @@ class QueryRequest(BaseModel):
     session_id: Optional[str] = None
     top_k: int = 5
 
+class StoreRequest(BaseModel):
+    content: str
+    session_id: str
+    role: str = "user"
+    importance: float = 0.5
+
 class MemoryResponse(BaseModel):
     id: str
     content: str
@@ -42,6 +48,22 @@ async def query_memory(request: QueryRequest):
                 created_at=str(r["created_at"])
             ) for r in results
         ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/store")
+async def store_memory(request: StoreRequest):
+    """
+    Manually store a memory (Hot storage).
+    """
+    try:
+        await memory_service.store_memory(
+            session_id=request.session_id,
+            content=request.content,
+            role=request.role,
+            importance=request.importance
+        )
+        return {"status": "stored"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

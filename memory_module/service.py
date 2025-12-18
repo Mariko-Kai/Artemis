@@ -13,7 +13,7 @@ from uuid import UUID
 from .config.settings import Settings
 from .embeddings.service import EmbeddingService
 from .interfaces import IMemoryService
-from .models import MemoryRecord, MemoryType, QueryRequest, QueryResponse, StoreRequest
+from .models import MemoryRecord, MemoryStatus, MemoryType, QueryRequest, QueryResponse, StoreRequest
 from .search.hybrid import HybridSearchService
 from .search.lexical import BM25LexicalIndex
 from .search.vector_store import FAISSVectorStore
@@ -60,7 +60,8 @@ class MemoryService(IMemoryService):
         self.hybrid_service = HybridSearchService(
             settings=settings,
             vector_store=self.vector_store,
-            lexical_index=self.lexical_index
+            lexical_index=self.lexical_index,
+            metadata_store=self.metadata_store
         )
         
         self.max_memory_percent = getattr(settings, 'max_memory_percent', 85.0)
@@ -95,41 +96,13 @@ class MemoryService(IMemoryService):
             content=content,
             metadata=metadata or {},
             tags=tags or [],
-            memory_type=memory_type
+            memory_type=memory_type,
+            status=MemoryStatus.PENDING_SUMMARY
         )
 
-        # Generate embedding
-        embedding = await self.embedding_service.embed(content)
-        memory.embedding = embedding
-
+        # Skip embedding and indexing for now (Ingestion phase)
         # Save to database
         saved_memory = await self.metadata_store.save(memory)
-
-        # Index in vector store
-        await self.vector_store.add(
-            id=str(saved_memory.id),
-            vector=embedding,
-            metadata={
-                "content": saved_memory.content,
-                "metadata": saved_memory.metadata,
-                "memory_type": saved_memory.memory_type.value,
-                "tags": saved_memory.tags,
-                "created_at": saved_memory.created_at,
-            },
-        )
-
-        # Index in lexical search
-        await self.lexical_index.index_document(
-            id=str(saved_memory.id),
-            text=saved_memory.content,
-            metadata={
-                "content": saved_memory.content,
-                "metadata": saved_memory.metadata,
-                "memory_type": saved_memory.memory_type.value,
-                "tags": saved_memory.tags,
-                "created_at": saved_memory.created_at,
-            },
-        )
 
         logger.info(f"Stored memory {saved_memory.id}")
         return saved_memory
@@ -146,40 +119,12 @@ class MemoryService(IMemoryService):
             tags=request.tags,
             source=request.source,
             confidence=request.confidence,
+            status=MemoryStatus.PENDING_SUMMARY
         )
 
-        # Generate embedding
-        embedding = await self.embedding_service.embed(memory.content)
-        memory.embedding = embedding
-
+        # Skip embedding and indexing for now (Ingestion phase)
         # Save to database
         saved_memory = await self.metadata_store.save(memory)
-
-        # Index in vector store
-        await self.vector_store.add(
-            id=str(saved_memory.id),
-            vector=embedding,
-            metadata={
-                "content": saved_memory.content,
-                "metadata": saved_memory.metadata,
-                "memory_type": saved_memory.memory_type.value,
-                "tags": saved_memory.tags,
-                "created_at": saved_memory.created_at,
-            },
-        )
-
-        # Index in lexical search
-        await self.lexical_index.index_document(
-            id=str(saved_memory.id),
-            text=saved_memory.content,
-            metadata={
-                "content": saved_memory.content,
-                "metadata": saved_memory.metadata,
-                "memory_type": saved_memory.memory_type.value,
-                "tags": saved_memory.tags,
-                "created_at": saved_memory.created_at,
-            },
-        )
 
         logger.info(f"Stored memory {saved_memory.id}")
         return saved_memory

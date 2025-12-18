@@ -36,7 +36,9 @@ class MemoryRecordDB(Base):
 
     # Core fields
     content = Column(Text, nullable=False)
+    summary = Column(Text, nullable=True)
     memory_type = Column(String(20), nullable=False, default="semantic")
+    status = Column(String(20), nullable=False, default="completed")
     source = Column(String(255), nullable=True)
     channel_id = Column(String(255), nullable=True) # Renamed from chat_id to generic channel/chat
     confidence = Column(Float, nullable=True)
@@ -65,6 +67,7 @@ class MemoryRecordDB(Base):
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_accessed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     # Indexes for common queries
     __table_args__ = (
@@ -94,6 +97,9 @@ class MemoryRecordDB(Base):
             "ref_id": self.ref_id or [],
             "part_of_message_id": self.part_of_message_id,
             "chunk_index": self.chunk_index,
+            "summary": self.summary,
+            "status": self.status,
+            "last_accessed_at": self.last_accessed_at.isoformat() if self.last_accessed_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

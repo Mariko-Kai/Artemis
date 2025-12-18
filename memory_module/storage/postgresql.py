@@ -5,14 +5,14 @@ from hashlib import sha256
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, update, or_
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 
 from ..interfaces import IMetadataStore
-from ..models import MemoryRecord, MemoryType
+from ..models import MemoryRecord, MemoryStatus, MemoryType
 from .models import AuditLog, Base, MemoryRecordDB, VectorMapping
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,9 @@ class PostgreSQLMetadataStore(IMetadataStore):
             ref_id=record.ref_id,
             part_of_message_id=str(record.part_of_message_id) if record.part_of_message_id else None,
             chunk_index=record.chunk_index,
+            summary=record.summary,
+            status=record.status.value,
+            last_accessed_at=record.last_accessed_at,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -107,6 +110,9 @@ class PostgreSQLMetadataStore(IMetadataStore):
             ref_id=db.ref_id or [],
             part_of_message_id=UUID(db.part_of_message_id) if db.part_of_message_id else None,
             chunk_index=db.chunk_index,
+            summary=db.summary,
+            status=MemoryStatus(db.status),
+            last_accessed_at=db.last_accessed_at,
             created_at=db.created_at,
             updated_at=db.updated_at,
         )
@@ -262,6 +268,34 @@ class PostgreSQLMetadataStore(IMetadataStore):
 
             await session.commit()
             return True
+
+    async def search(self, query: str, filters: Optional[Dict[str, Any]] = None, limit: int = 20) -> List[MemoryRecord]:
+        """
+        Search for memory records in storage using text matching.
+        Primarily targets 'hot' records (pending index).
+        """
+        async with self.async_session() as session:
+            # Search content and summary
+            # We filter for records not yet completed in terms of indexing
+            # so we only get 'hot' data here.
+            search_str = f"%{query}%"
+            stmt = select(MemoryRecordDB).where(
+                or_(
+                    MemoryRecordDB.content.ilike(search_str),
+                    MemoryRecordDB.summary.ilike(search_str)
+                )
+            ).where(MemoryRecordDB.status != "completed")
+            
+            # Apply filters if any
+            if filters:
+                if "channel_id" in filters:
+                    stmt = stmt.where(MemoryRecordDB.channel_id == filters["channel_id"])
+                if "memory_type" in filters:
+                    stmt = stmt.where(MemoryRecordDB.memory_type == filters["memory_type"])
+
+            stmt = stmt.order_by(MemoryRecordDB.created_at.desc()).limit(limit)
+            result = await session.execute(stmt)
+            return [self._to_pydantic(r) for r in result.scalars().all()]
 
     async def close(self) -> None:
         """Close database engine."""

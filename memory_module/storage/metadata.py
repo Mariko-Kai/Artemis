@@ -8,11 +8,11 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from ..interfaces import IMetadataStore
-from ..models import MemoryRecord, MemoryType
+from ..models import MemoryRecord, MemoryStatus, MemoryType
 from .models import Base, MemoryRecordDB
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,9 @@ class MetadataStore(IMetadataStore):
             confidence=record.confidence,
             record_metadata=record.metadata,
             tags=record.tags,
+            summary=record.summary,
+            status=record.status.value,
+            last_accessed_at=record.last_accessed_at,
             created_at=record.created_at,
             updated_at=record.updated_at,
         )
@@ -81,6 +84,9 @@ class MetadataStore(IMetadataStore):
             confidence=db_record.confidence,
             metadata=db_record.record_metadata or {},
             tags=db_record.tags or [],
+            summary=db_record.summary,
+            status=MemoryStatus(db_record.status),
+            last_accessed_at=db_record.last_accessed_at,
             created_at=db_record.created_at,
             updated_at=db_record.updated_at,
         )
@@ -227,6 +233,29 @@ class MetadataStore(IMetadataStore):
             await session.commit()
             logger.debug(f"Deleted memory record {id}")
             return True
+
+    async def search(self, query: str, filters: Optional[Dict[str, Any]] = None, limit: int = 20) -> List[MemoryRecord]:
+        """
+        Search for memory records in storage using text matching.
+        """
+        async with self.async_session() as session:
+            search_str = f"%{query}%"
+            stmt = select(MemoryRecordDB).where(
+                or_(
+                    MemoryRecordDB.content.like(search_str),
+                    MemoryRecordDB.summary.like(search_str)
+                )
+            ).where(MemoryRecordDB.status != "completed")
+
+            if filters:
+                if "memory_type" in filters:
+                    stmt = stmt.where(MemoryRecordDB.memory_type == filters["memory_type"])
+                if "source" in filters:
+                    stmt = stmt.where(MemoryRecordDB.source == filters["source"])
+
+            stmt = stmt.order_by(MemoryRecordDB.created_at.desc()).limit(limit)
+            result = await session.execute(stmt)
+            return [self._to_pydantic_model(r) for r in result.scalars().all()]
 
     async def get_stats(self) -> Dict[str, Any]:
         """

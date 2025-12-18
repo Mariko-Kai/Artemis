@@ -123,6 +123,9 @@ async def startup_event():
     # Start Archival Service
     from app.services.archival_service import archival_service
     await archival_service.start_cleanup_task()
+    # Start Deferred Processing Service
+    from app.services.deferred_processing_service import deferred_processing_service
+    asyncio.create_task(deferred_processing_service.start())
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -130,6 +133,8 @@ async def shutdown_event():
     await summarization_worker.stop()
     from app.services.archival_service import archival_service
     await archival_service.stop_cleanup_task()
+    from app.services.deferred_processing_service import deferred_processing_service
+    await deferred_processing_service.stop()
     from app.services.memory_service import memory_service
     await memory_service.shutdown()
     
@@ -211,7 +216,7 @@ async def chat_completions(request: ChatCompletionRequest, background_tasks: Bac
             messages_for_inference = current_messages
 
         logger.info("Acquiring GPU lock for LLM inference...")
-        async with gpu_lock:
+        async with gpu_lock.request_priority_access():
             response = await asyncio.to_thread(
                 model.create_chat_completion,
                 messages=messages_for_inference,

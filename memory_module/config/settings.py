@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     temporal_half_life_hours: float = Field(
         default=24.0, description="Half-life in hours for temporal decay"
     )
+    hot_storage_boost: float = Field(
+        default=0.8, description="Score boost for hot storage (unindexed) records"
+    )
 
     # API configuration
     api_host: str = Field(default="0.0.0.0", description="API host")

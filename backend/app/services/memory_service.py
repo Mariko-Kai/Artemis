@@ -78,12 +78,8 @@ class ArtemisMemoryService:
         Lightweight storage workflow.
         """
         try:
-            # 1. Generate Embedding
-            embedding = await self._get_embedding(content)
-            
+            # 1. Skip Embedding and indexing for now (Ingestion phase)
             # 2. Database Save (SQLite Sync)
-            # We run sync DB ops in thread if needed, but for SQLite simple inserts are fast.
-            # However, to be safe with main loop:
             db: Session = SessionLocal()
             try:
                 record = MemoryRecordDB(
@@ -91,8 +87,9 @@ class ArtemisMemoryService:
                     channel_id=session_id,
                     source=role,
                     importance=importance,
-                    embedding_blob=pickle.dumps(embedding), # Store as BLOB
+                    status="pending_summary",
                     metadata_json={"role": role},
+                    last_accessed_at=datetime.now(timezone.utc).replace(tzinfo=None),
                     created_at=datetime.now(timezone.utc).replace(tzinfo=None)
                 )
                 db.add(record)
@@ -100,23 +97,7 @@ class ArtemisMemoryService:
                 db.refresh(record)
                 record_id = str(record.id)
                 
-                # 3. Update Indexes (In-Memory)
-                # Vector Store
-                await self.vector_store.add(
-                    id=record_id,
-                    vector=embedding,
-                    metadata={"content": content, "channel_id": session_id}
-                )
-                
-                # Lexical Index
-                # Note: BM25 add might be sync or async
-                await self.lexical_index.index_document(
-                    id=record_id,
-                    text=content,
-                    metadata={"content": content}
-                )
-                
-                logger.info(f"Stored memory {record_id} for session {session_id}")
+                logger.info(f"Stored memory {record_id} for session {session_id} with status pending_summary")
                 
             finally:
                 db.close()

@@ -277,6 +277,22 @@ class IMetadataStore(ABC):
         """
         pass
 
+    @abstractmethod
+    async def search(self, query: str, filters: Optional[Dict[str, Any]] = None, limit: int = 20) -> List[MemoryRecord]:
+        """
+        Search for memory records in SQL storage (hot storage).
+        Typically used for records not yet in vector/lexical indexes.
+
+        Args:
+            query: Search query string
+            filters: Optional metadata filters
+            limit: Maximum number of results
+
+        Returns:
+            List of matching memory records
+        """
+        pass
+
 
 class IMemoryService(ABC):
     """High-level interface for memory operations."""

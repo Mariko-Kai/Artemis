@@ -22,6 +22,14 @@ class MemoryType(str, Enum):
     SEMANTIC = "semantic"
 
 
+class MemoryStatus(str, Enum):
+    """Processing status of a memory record."""
+
+    PENDING_SUMMARY = "pending_summary"
+    PENDING_EMBEDDING = "pending_embedding"
+    COMPLETED = "completed"
+
+
 class MemoryRecord(BaseModel):
     """
     Core memory record model.
@@ -31,10 +39,15 @@ class MemoryRecord(BaseModel):
 
     id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     content: str = Field(..., min_length=1, description="Memory content text")
+    summary: Optional[str] = Field(default=None, description="Condensed summary of the content")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     embedding: Optional[List[float]] = Field(default=None, description="Embedding vector")
+    status: MemoryStatus = Field(default=MemoryStatus.COMPLETED, description="Processing status")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
+    last_accessed_at: datetime = Field(
+        default_factory=datetime.utcnow, description="Last access timestamp for hot storage life tracking"
+    )
     memory_type: MemoryType = Field(
         default=MemoryType.SEMANTIC, description="Type of memory"
     )

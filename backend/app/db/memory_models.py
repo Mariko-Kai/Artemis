@@ -17,7 +17,9 @@ class MemoryRecordDB(Base):
 
     # Core fields
     content = Column(Text, nullable=False)
+    summary = Column(Text, nullable=True)
     memory_type = Column(String, nullable=False, default="semantic") # episodic, semantic
+    status = Column(String, nullable=False, default="completed") # pending_summary, pending_embedding, completed
     source = Column(String, nullable=True) # e.g., "chat", "user_input"
     
     # Artemis Integration
@@ -48,6 +50,7 @@ class MemoryRecordDB(Base):
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    last_accessed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     # session = relationship("ChatSession", back_populates="memories") # Need to add back_populates to ChatSession if we want two-way

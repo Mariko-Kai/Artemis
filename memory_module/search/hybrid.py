@@ -12,8 +12,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..config.settings import Settings
-from ..interfaces import ILexicalIndex, IVectorStore
-from ..models import SearchResult
+from ..interfaces import ILexicalIndex, IVectorStore, IMetadataStore
+from ..models import SearchResult, MemoryRecord
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ class HybridSearchService:
         settings: Settings,
         vector_store: IVectorStore,
         lexical_index: ILexicalIndex,
+        metadata_store: IMetadataStore,
     ):
         """
         Initialize hybrid search service.
@@ -34,10 +35,12 @@ class HybridSearchService:
             settings: Configuration settings
             vector_store: Vector store instance
             lexical_index: Lexical index instance
+            metadata_store: Metadata store instance (for hot search)
         """
         self.settings = settings
         self.vector_store = vector_store
         self.lexical_index = lexical_index
+        self.metadata_store = metadata_store
         
     async def search(
         self,
@@ -81,13 +84,18 @@ class HybridSearchService:
         else:
             tasks.append(asyncio.sleep(0, result=[])) # No-op
 
+        # 3. Hot Storage Search (SQL)
+        # Search unindexed records (pending_summary, pending_embedding)
+        tasks.append(self.metadata_store.search(query_text, filters=filters, limit=top_k))
+
         # Await results
-        vector_results, lexical_results = await asyncio.gather(*tasks)
+        vector_results, lexical_results, hot_results = await asyncio.gather(*tasks)
         
-        # 3. Score Normalization & Fusion
+        # 4. Score Normalization & Fusion
         combined_results = self._fuse_results(
             vector_results, 
             lexical_results, 
+            hot_results,
             weight,
             top_k
         )
@@ -98,6 +106,7 @@ class HybridSearchService:
         self,
         vector_results: List[SearchResult],
         lexical_results: List[SearchResult],
+        hot_results: List[MemoryRecord],
         weight: float,
         top_k: int
     ) -> List[SearchResult]:
@@ -167,7 +176,32 @@ class HybridSearchService:
                 r.lexical_score = norm_score
                 r.semantic_score = 0.0
 
-        # 3. Calculate Final Score + Temporal Boost
+        # 3. Handle Hot Storage Results
+        # These records are fresh and relevant but lack similarity scores.
+        # We give them a high base score (boost).
+        hot_boost = self.settings.hot_storage_boost if hasattr(self.settings, 'hot_storage_boost') else 0.8
+        for hr in hot_results:
+            rid = str(hr.id)
+            if rid not in all_results:
+                search_res = SearchResult(
+                    id=hr.id,
+                    content=hr.content,
+                    score=hot_boost, # Base score for hot records
+                    metadata=hr.metadata,
+                    memory_type=hr.memory_type,
+                    tags=hr.tags,
+                    created_at=hr.created_at
+                )
+                search_res.lexical_score = hot_boost # Alias for fusion
+                search_res.semantic_score = hot_boost
+                all_results[rid] = {
+                    "result": search_res,
+                    "sem_score": hot_boost,
+                    "lex_score": hot_boost,
+                    "is_hot": True
+                }
+
+        # 4. Calculate Final Score + Temporal Boost
         final_list = []
         now = datetime.now(timezone.utc)
         

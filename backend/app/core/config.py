@@ -26,7 +26,14 @@ class Settings(BaseSettings):
 
     # Summarization Configuration
     MEMORY_SUMMARIZATION_ENABLED: bool = True
-    MEMORY_IDLE_THRESHOLD_SECONDS: int = 300
+    IDLE_TIME_MINUTES: int = 5
+    SUMMARY_BATCH_SIZE: int = 20
+    MEMORY_IDLE_THRESHOLD_SECONDS: int = 300 # This will be calculated from IDLE_TIME_MINUTES in __init__ if needed, or kept as is.
+    # We can use a property or validator. 
+    @property
+    def idle_threshold_seconds(self) -> int:
+        return self.IDLE_TIME_MINUTES * 60
+
     MEMORY_SUMMARY_MIN_MESSAGES: int = 10
     MEMORY_FACT_EXTRACTION_ENABLED: bool = False
     

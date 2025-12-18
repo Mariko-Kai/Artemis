@@ -29,7 +29,7 @@ class LocalLLM(LLM):
         # Helper to run async lock and inference synchronously
         def run_inference():
             async def _async_infer():
-                async with gpu_lock:
+                async with gpu_lock.request_priority_access():
                     # Simple completion for ReAct agent
                     # Phi-3 instruct format handling might be needed here
                     # For now, we pass the raw prompt as user message
