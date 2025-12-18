@@ -1,0 +1,2 @@
+[console_scripts]
+artemis = cli.main:main
