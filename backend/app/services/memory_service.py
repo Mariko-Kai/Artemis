@@ -5,7 +5,7 @@ import pickle
 import numpy as np
 import asyncio
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
@@ -28,7 +28,7 @@ class ArtemisMemoryService:
     """
 
     def __init__(self):
-        self.vector_dim = 384 # Default for many small models, will detect from service
+        self.vector_dim = settings.vector_dim
         
         # Initialize Embedding Service (Lightweight wrapper mainly)
         # We might need to configure it to NOT load a model if we use llama-cpp
@@ -42,6 +42,7 @@ class ArtemisMemoryService:
         self.vector_store = FAISSVectorStore(
             dimension=self.vector_dim,
             index_path="memory_index.faiss", # Local path relative to run
+            database_url=settings.DATABASE_URL,
             mrl_enabled=False 
         )
         
@@ -92,7 +93,7 @@ class ArtemisMemoryService:
                     importance=importance,
                     embedding_blob=pickle.dumps(embedding), # Store as BLOB
                     metadata_json={"role": role},
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc).replace(tzinfo=None)
                 )
                 db.add(record)
                 db.commit()

@@ -6,6 +6,7 @@ This service coordinates embedding generation, storage, and search.
 
 import logging
 import time
+import psutil
 from typing import Any, Dict, Optional, List
 from uuid import UUID
 
@@ -61,8 +62,17 @@ class MemoryService(IMemoryService):
             vector_store=self.vector_store,
             lexical_index=self.lexical_index
         )
+        
+        self.max_memory_percent = getattr(settings, 'max_memory_percent', 85.0)
 
         logger.info("Memory service initialized successfully")
+
+    def _check_memory(self):
+        """Monitor system memory to prevent OOM/IDE crashes."""
+        mem = psutil.virtual_memory()
+        if mem.percent > self.max_memory_percent:
+            logger.error(f"Memory threshold exceeded: {mem.percent}% > {self.max_memory_percent}%")
+            raise MemoryError(f"System memory critical ({mem.percent}%). Operation aborted to prevent crash.")
 
     async def initialize(self) -> None:
         """Initialize the service (create database tables, load indexes, etc.)."""
@@ -77,24 +87,9 @@ class MemoryService(IMemoryService):
         memory_type: MemoryType = MemoryType.SEMANTIC
     ) -> MemoryRecord:
         """
-        Store a new memory.
-
-        This orchestrates:
-        1. Create memory record
-        2. Generate embedding
-        3. Save to database
-        4. Index in vector store
-        5. Index in lexical search
-
-        Args:
-            content: Memory content
-            metadata: Optional metadata
-            tags: Optional tags
-            memory_type: Memory type
-
-        Returns:
-            Stored memory record
+        Store a new memory with OOM protection.
         """
+        self._check_memory()
         # Create memory record
         memory = MemoryRecord(
             content=content,
@@ -141,14 +136,9 @@ class MemoryService(IMemoryService):
 
     async def store_memory_from_request(self, request: StoreRequest) -> MemoryRecord:
         """
-        Store a memory from a StoreRequest.
-
-        Args:
-            request: Store request with all fields
-
-        Returns:
-            Stored memory record
+        Store a memory from a StoreRequest with OOM protection.
         """
+        self._check_memory()
         memory = MemoryRecord(
             content=request.content,
             metadata=request.metadata or {},
@@ -195,15 +185,8 @@ class MemoryService(IMemoryService):
         return saved_memory
 
     async def search_memories(self, request: QueryRequest) -> QueryResponse:
-        """
-        Search for memories using hybrid search.
-
-        Args:
-            request: Query request
-
-        Returns:
-            Query response with results
-        """
+        """Search for memories with OOM protection."""
+        self._check_memory()
         start_time = time.time()
 
         # Generate query embedding
@@ -305,6 +288,12 @@ class MemoryService(IMemoryService):
             "vector_dimension": self.vector_dim,
             "total_tags": 0,  # TODO: Calculate unique tags
         }
+
+    async def close(self) -> None:
+        """Close all component connections."""
+        await self.vector_store.close()
+        await self.metadata_store.close()
+        logger.info("Memory service closed")
 
     async def save_indexes(self) -> None:
         """Save indexes to disk for persistence."""

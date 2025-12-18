@@ -263,6 +263,11 @@ class PostgreSQLMetadataStore(IMetadataStore):
             await session.commit()
             return True
 
+    async def close(self) -> None:
+        """Close database engine."""
+        await self.engine.dispose()
+        logger.info("PostgreSQLMetadataStore connection closed")
+
     async def get_chunks(self, part_of_message_id: str) -> List[MemoryRecord]:
         """Get all chunks for a message."""
         async with self.async_session() as session:

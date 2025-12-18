@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+./__init__.py
+./interfaces.py
+./models.py
+./service.py
+memory_module.egg-info/PKG-INFO
+memory_module.egg-info/SOURCES.txt
+memory_module.egg-info/dependency_links.txt
+memory_module.egg-info/top_level.txt

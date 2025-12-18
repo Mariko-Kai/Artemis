@@ -1,7 +1,7 @@
 
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, Float, Boolean, JSON, LargeBinary
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from .database import Base
 
@@ -46,8 +46,8 @@ class MemoryRecordDB(Base):
     embedding_blob = Column(LargeBinary, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     # Relationships
     # session = relationship("ChatSession", back_populates="memories") # Need to add back_populates to ChatSession if we want two-way
@@ -63,7 +63,13 @@ class VectorMapping(Base):
 
     faiss_id = Column(Integer, primary_key=True)
     memory_id = Column(String, ForeignKey("memory_records.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Additional context for embedding
+    embedding_model_version = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+
+    # Store full-dimension vector for re-ranking (MRL Stage 2)
+    full_vector = Column(JSON, nullable=True)
 
 class AuditLog(Base):
     """
@@ -74,7 +80,7 @@ class AuditLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     memory_id = Column(String, index=True)
     operation = Column(String) # INSERT, QUERY, etc.
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     details = Column(String, nullable=True) # JSON string
 
 class ConfigVersion(Base):
@@ -85,7 +91,7 @@ class ConfigVersion(Base):
     
     version_id = Column(Integer, primary_key=True)
     config_json = Column(JSON, nullable=False)
-    effective_from = Column(DateTime, default=datetime.utcnow)
+    effective_from = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 class JobQueue(Base):
     """
@@ -97,8 +103,7 @@ class JobQueue(Base):
     job_type = Column(String, default="summarization")
     target_id = Column(String) # e.g., session_id
     status = Column(String, default="pending") # pending, processing, completed, failed
-    created_at = Column(DateTime, default=datetime.utcnow)
-    retries = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     retries = Column(Integer, default=0)
     error = Column(Text, nullable=True)
 
@@ -110,7 +115,7 @@ class ArchivedMemoryRecordDB(Base):
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     original_id = Column(String, nullable=False, index=True) # Reference to original ID (not FK to allow deletion of original)
-    archived_at = Column(DateTime, default=datetime.utcnow, index=True)
+    archived_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), index=True)
     
     # Content
     compressed_content = Column(LargeBinary, nullable=False) # Gzipped

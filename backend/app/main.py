@@ -20,6 +20,7 @@ import time
 import logging
 import asyncio
 import uuid
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,7 @@ async def startup_event():
     from app.services.memory_service import memory_service
     await memory_service.initialize()
     # Start Summarization Worker
+    from app.services.summarization_worker import summarization_worker
     await summarization_worker.start()
     # Start Archival Service
     from app.services.archival_service import archival_service
@@ -124,6 +126,7 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    from app.services.summarization_worker import summarization_worker
     await summarization_worker.stop()
     from app.services.archival_service import archival_service
     await archival_service.stop_cleanup_task()
@@ -139,7 +142,7 @@ async def chat_completions(request: ChatCompletionRequest, background_tasks: Bac
             try:
                 session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
                 if session:
-                    session.last_activity = datetime.utcnow()
+                    session.last_activity = datetime.now(timezone.utc).replace(tzinfo=None)
                     db.commit()
             except Exception as e:
                 logger.error(f"Failed to update activity: {e}")

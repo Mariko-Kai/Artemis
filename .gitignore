@@ -24,7 +24,7 @@ Thumbs.db
 *.webm
 
 # Database
-*.db
+test_debug.db
 sessions.db
 
 # Memory Module
@@ -40,3 +40,9 @@ memory_module/.coverage
 memory_module/.ruff_cache/
 memory_module/htmlcov/
 memory_module/**/*.pyc
+
+# Test files
+test_crud.log
+test_log_final.txt
+test_log.txt
+test_output.txt

@@ -5,6 +5,14 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Artemis Backend"
     API_V1_STR: str = "/v1"
     
+    # Embedding Configuration
+    embedding_model_name: str = "Snowflake/snowflake-arctic-embed-m"
+    embedding_device: str = "cpu"
+    vector_dim: int = 768
+    redis_url: str = ""
+    cache_ttl: int = 3600
+    DATABASE_URL: str = "sqlite+aiosqlite:///./sessions.db"
+    
     # Model Configuration
     # Model Configuration
     # Path relative to backend directory

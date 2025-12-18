@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     max_concurrent_requests: int = Field(
         default=10, description="Maximum concurrent API requests"
     )
+    max_memory_percent: float = Field(
+        default=85.0, description="Maximum system memory usage percentage before aborting operations"
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="MM_",

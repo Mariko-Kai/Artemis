@@ -18,7 +18,7 @@ from sqlalchemy.orm import sessionmaker
 
 from ..interfaces import IVectorStore
 from ..models import SearchResult
-from ..storage.models import VectorMapping
+from ..storage.models import Base, VectorMapping
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ class FAISSVectorStore(IVectorStore):
         self.index_type = index_type
         self.mrl_enabled = mrl_enabled
         self.storage_dimension = storage_dimension
+        self.database_url = database_url
         self.faiss_m = faiss_m
         self.faiss_ef_search = faiss_ef_search
 
@@ -87,6 +88,12 @@ class FAISSVectorStore(IVectorStore):
         logger.info(
             f"FAISS vector store initialized (dim={dimension}, storage_dim={storage_dimension}, type={index_type})"
         )
+
+    async def init_db(self) -> None:
+        """Initialize database mappings table."""
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Vector mapping table verified")
 
     def _create_index(self) -> faiss.Index:
         """Create FAISS index."""
@@ -340,9 +347,14 @@ class FAISSVectorStore(IVectorStore):
     async def load(self, path: str) -> None:
         """Load index manually."""
         self.index_path = Path(path)
-        # Re-initialize index logic? 
-        # Just calling _load_index_sync in executor
         loop = asyncio.get_running_loop()
-        # faiss.read_index releases GIL?
         self.index = await loop.run_in_executor(self.executor, faiss.read_index, str(self.index_path / "index.faiss"))
+
+    async def close(self) -> None:
+        """Close database connections and executor."""
+        if hasattr(self, 'engine'):
+            await self.engine.dispose()
+        if hasattr(self, 'executor'):
+            self.executor.shutdown(wait=False)
+        logger.info("FAISS vector store connections closed")
 
