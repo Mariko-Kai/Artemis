@@ -82,6 +82,19 @@ async def get_chat_context(chat_id: str, db: Session = Depends(get_db)):
         } for m in memories
     ]
 
+@router.get("/chat/{chat_id}/events")
+async def get_chat_events(chat_id: str):
+    """
+    Get all memory events for a chat session in chronological order.
+    Provides an event-sourced view of the conversation memory.
+    """
+    events = await memory_service.get_session_events(chat_id)
+    return {
+        "session_id": chat_id,
+        "count": len(events),
+        "events": events
+    }
+
 @router.post("/chat/{chat_id}/export")
 async def export_chat_memories(chat_id: str, db: Session = Depends(get_db)):
     """

@@ -170,6 +170,39 @@ class ArtemisMemoryService:
             logger.error(f"Query failed: {e}")
             return []
 
+    async def get_session_events(self, session_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all memory records for a session in chronological order.
+        This provides an event-sourced view of the conversation.
+        
+        Args:
+            session_id: The session/channel ID to retrieve events for
+            
+        Returns:
+            List of memory records ordered by created_at timestamp
+        """
+        db: Session = SessionLocal()
+        try:
+            records = db.query(MemoryRecordDB).filter(
+                MemoryRecordDB.channel_id == session_id
+            ).order_by(MemoryRecordDB.created_at.asc()).all()
+            
+            return [
+                {
+                    "id": rec.id,
+                    "content": rec.content,
+                    "summary": rec.summary,
+                    "role": rec.source,
+                    "status": rec.status,
+                    "importance": rec.importance,
+                    "created_at": rec.created_at,
+                    "metadata": rec.metadata_json
+                }
+                for rec in records
+            ]
+        finally:
+            db.close()
+
     async def shutdown(self):
         """Shutdown memory service components."""
         logger.info("Shutting down Artemis Memory Service...")

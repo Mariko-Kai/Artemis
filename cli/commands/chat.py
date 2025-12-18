@@ -14,8 +14,8 @@ import io
 app = typer.Typer(help="💬 Chat with Artemis LLM")
 
 
-def _direct_chat(messages: list, session_id: Optional[str] = None) -> str:
-    """Chat using direct Python service calls."""
+def _direct_chat(messages: list, session_id: Optional[str] = None, save_to_db: bool = True) -> str:
+    """Chat using direct Python service calls with optional DB persistence."""
     import sys
     import os
     
@@ -27,17 +27,24 @@ def _direct_chat(messages: list, session_id: Optional[str] = None) -> str:
     import asyncio
     from app.core.llm_engine import llm_engine
     from app.core.global_lock import gpu_lock
+    from app.core.config import settings
+    from app.db.database import SessionLocal
+    from app.db.models import ChatSession, ChatMessage as DbMessage
     
     # Ensure model is loaded
     if llm_engine.model is None:
         print_info("Loading LLM model...")
         llm_engine.load_model()
     
+    # Inject system prompt
+    inference_messages = [{"role": "system", "content": settings.SYSTEM_PROMPT}]
+    inference_messages.extend(messages)
+    
     async def run_inference():
         async with gpu_lock:
             response = await asyncio.to_thread(
                 llm_engine.model.create_chat_completion,
-                messages=messages,
+                messages=inference_messages,
                 temperature=0.7
             )
             return response["choices"][0]["message"]["content"]
@@ -48,7 +55,70 @@ def _direct_chat(messages: list, session_id: Optional[str] = None) -> str:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     
-    return loop.run_until_complete(run_inference())
+    result = loop.run_until_complete(run_inference())
+    
+    # Save to DB if session_id is provided
+    if save_to_db and session_id:
+        db = SessionLocal()
+        try:
+            # Save the last user message
+            for msg in messages:
+                if msg.get("role") == "user":
+                    db_msg = DbMessage(session_id=session_id, role="user", content=msg.get("content"))
+                    db.add(db_msg)
+            # Save assistant response
+            db_msg = DbMessage(session_id=session_id, role="assistant", content=result)
+            db.add(db_msg)
+            db.commit()
+        finally:
+            db.close()
+    
+    return result
+
+
+def _get_or_create_session(title: str = "CLI Chat") -> str:
+    """Create a new session and return its ID."""
+    import sys
+    import os
+    
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    sys.path.insert(0, project_root)
+    sys.path.insert(0, os.path.join(project_root, "backend"))
+    
+    from app.db.database import SessionLocal
+    from app.db.models import ChatSession
+    
+    db = SessionLocal()
+    try:
+        session = ChatSession(title=title)
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        return session.id
+    finally:
+        db.close()
+
+
+def _load_session_history(session_id: str) -> list:
+    """Load message history from DB for a session."""
+    import sys
+    import os
+    
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    sys.path.insert(0, project_root)
+    sys.path.insert(0, os.path.join(project_root, "backend"))
+    
+    from app.db.database import SessionLocal
+    from app.db.models import ChatMessage as DbMessage
+    
+    db = SessionLocal()
+    try:
+        messages = db.query(DbMessage).filter(
+            DbMessage.session_id == session_id
+        ).order_by(DbMessage.timestamp).all()
+        return [{"role": m.role, "content": m.content} for m in messages]
+    finally:
+        db.close()
 
 
 @app.callback(invoke_without_command=True)
@@ -82,7 +152,21 @@ def chat(
     else:
         # Interactive mode
         print_welcome()
-        history = []
+        
+        # Session management for direct mode
+        active_session = session
+        if not http and not active_session:
+            # Auto-create a new session for persistence
+            active_session = _get_or_create_session("CLI Chat")
+            print_info(f"Created session: {active_session[:8]}...")
+        
+        # Load history from DB if session exists
+        if not http and active_session:
+            history = _load_session_history(active_session)
+            if history:
+                print_info(f"Loaded {len(history)} messages from session history")
+        else:
+            history = []
         
         while True:
             try:
@@ -95,17 +179,22 @@ def chat(
                     print_info("Goodbye! 👋")
                     break
                 
-                history.append({"role": "user", "content": user_input})
+                # Only add to local history for inference, DB saving happens in _direct_chat
+                current_msg = {"role": "user", "content": user_input}
+                inference_history = history + [current_msg]
                 
                 with print_thinking("Thinking..."):
                     try:
                         if http:
                             client = get_client()
-                            response = client.chat(history, session_id=session, temperature=temperature)
+                            response = client.chat(inference_history, session_id=session, temperature=temperature)
                             reply = response["choices"][0]["message"]["content"]
                         else:
-                            reply = _direct_chat(history, session)
+                            # Pass only the new message, _direct_chat will save it
+                            reply = _direct_chat([current_msg], active_session, save_to_db=True)
                         
+                        # Update local history
+                        history.append(current_msg)
                         history.append({"role": "assistant", "content": reply})
                     except Exception as e:
                         print_error(str(e))

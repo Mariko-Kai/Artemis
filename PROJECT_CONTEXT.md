@@ -389,6 +389,7 @@ async with gpu_lock:
 |--------|----------|----------|
 | POST | `/v1/memory/store` | Сохранить память |
 | POST | `/v1/memory/query` | Поиск по памяти |
+| GET | `/v1/memory/chat/{id}/events` | Event-sourced история сессии |
 | GET | `/v1/memory/{id}` | Получить запись |
 | DELETE | `/v1/memory/{id}` | Удалить запись |
 | GET | `/v1/memory/stats` | Статистика |

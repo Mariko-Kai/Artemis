@@ -185,8 +185,13 @@ async def chat_completions(request: ChatCompletionRequest, background_tasks: Bac
             # Or just prepend to the whole list as a 'system' message?
             # Ideally, detailed system prompt -> memories -> history -> new message
             
-            # Simple strategy: Add a system message with memories at the start
+            # Simple strategy: System prompt -> memories -> history -> new message
             final_messages = []
+            
+            # 1. System Prompt (always first)
+            final_messages.append({"role": "system", "content": settings.SYSTEM_PROMPT})
+            
+            # 2. Memory Context (if available)
             if memory_context:
                 final_messages.append({"role": "system", "content": memory_context})
                 
@@ -213,7 +218,9 @@ async def chat_completions(request: ChatCompletionRequest, background_tasks: Bac
                 background_tasks.add_task(generate_title, request.session_id, user_msg_content)
 
         else:
-            messages_for_inference = current_messages
+            # No session - still inject system prompt
+            messages_for_inference = [{"role": "system", "content": settings.SYSTEM_PROMPT}]
+            messages_for_inference.extend(current_messages)
 
         logger.info("Acquiring GPU lock for LLM inference...")
         async with gpu_lock.request_priority_access():
