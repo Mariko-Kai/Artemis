@@ -130,6 +130,13 @@ async def shutdown_event():
     await summarization_worker.stop()
     from app.services.archival_service import archival_service
     await archival_service.stop_cleanup_task()
+    from app.services.memory_service import memory_service
+    await memory_service.shutdown()
+    
+    # Release model resources
+    llm_engine.model = None
+    asr_engine.model = None
+    logger.info("Server shutdown handlers finished.")
 
 @app.post(f"{settings.API_V1_STR}/chat/completions")
 async def chat_completions(request: ChatCompletionRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):

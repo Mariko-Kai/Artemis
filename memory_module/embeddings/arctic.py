@@ -215,6 +215,17 @@ class ArcticEmbedService(IEmbeddingService):
         target_dim = dimension or self.default_dim
         return [self._truncate_vector(v, target_dim) for v in vectors]
 
+    async def close(self) -> None:
+        """Close external resources."""
+        if hasattr(self, '_executor'):
+            self._executor.shutdown(wait=False)
+        if self._redis:
+            try:
+                self._redis.close()
+            except Exception as e:
+                logger.warning(f"Error closing Redis connection: {e}")
+        logger.info("ArcticEmbedService resources closed")
+
 
 # Global instance cache
 _service_instance: Optional[ArcticEmbedService] = None

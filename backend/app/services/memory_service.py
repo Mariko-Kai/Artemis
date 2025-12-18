@@ -189,4 +189,13 @@ class ArtemisMemoryService:
             logger.error(f"Query failed: {e}")
             return []
 
+    async def shutdown(self):
+        """Shutdown memory service components."""
+        logger.info("Shutting down Artemis Memory Service...")
+        if self.vector_store:
+            await self.vector_store.close()
+        if self.embedding_service:
+            await self.embedding_service.close()
+        logger.info("Memory Service Shutdown complete.")
+
 memory_service = ArtemisMemoryService()
