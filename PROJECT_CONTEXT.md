@@ -68,7 +68,8 @@ Artemis/
 │       ├── services/
 │       │   ├── memory_service.py   # Memory integration wrapper
 │       │   ├── archival_service.py # Background archival worker
-│       │   └── summarization_worker.py  # Auto-summarization
+│       │   ├── summarization_worker.py  # Auto-summarization
+│       │   └── deferred_processing_service.py  # Hot/Cold memory processing
 │       └── agent/
 │           ├── executor.py         # ReAct agent executor
 │           └── tools.py            # Search & Browser tools
@@ -119,9 +120,13 @@ Artemis/
 │   ├── download_model.py           # Download LLM weights
 │   ├── download_embedding_model.py # Download Arctic model
 │   ├── backup_memories.py          # Export memories to JSONL
-│   └── restore_memories.py         # Import from backup
+│   ├── restore_memories.py         # Import from backup
+│   └── run_tests.py                # 🆕 CLI test runner
 │
 ├── tests/
+│   ├── conftest.py                 # 🆕 Test fixtures & mocks
+│   ├── test_memory_workflow.py     # 🆕 Hot/Cold memory lifecycle test
+│   ├── test_preemption.py          # 🆕 GPU lock preemption test
 │   ├── test_setup.py
 │   └── verify_persistence.py
 │
@@ -219,7 +224,83 @@ TRUNCATED_DIM = 256        # For initial filtering (MRL)
 
 ---
 
-### 4. CUDA Configuration (WSL2)
+### 5. Hot/Cold Memory Architecture (Deferred Processing)
+
+**Цель:** Оптимизация использования VRAM через отложенную обработку.
+
+**Статусы памяти (MemoryStatus):**
+
+| Статус | Описание |
+|--------|----------|
+| `pending_summary` | 🔥 "Hot": Сохранено, ожидает суммаризации |
+| `pending_embedding` | Суммаризировано, ожидает индексации |
+| `completed` | ❄️ "Cold": Полностью проиндексировано |
+
+**Workflow:**
+
+```mermaid
+flowchart LR
+    A[POST /v1/memory/store] --> B[DB: pending_summary]
+    B --> C{GPU Idle?}
+    C -->|Yes| D[Summarize via LLM]
+    D --> E[DB: pending_embedding]
+    E --> F[Generate Embeddings]
+    F --> G[Index in FAISS + BM25]
+    G --> H[DB: completed]
+    C -->|No| C
+```
+
+**Компоненты:**
+
+| Файл | Назначение |
+|------|------------|
+| `deferred_processing_service.py` | Background loop, checks GPU idle time |
+| `global_lock.py` | `PreemptibleGPULock` with `request_priority_access()` |
+
+**GPU Preemption:**
+
+```python
+# High-priority request (Chat)
+async with gpu_lock.request_priority_access():
+    # Background tasks receive preempt signal
+    response = await llm.generate(...)
+
+# Background task
+async with gpu_lock.background() as preempt_trigger:
+    if preempt_trigger.is_set():
+        cleanup_vram()
+        return
+```
+
+---
+
+### 6. Integration Test Suite
+
+**Цель:** CLI-тесты для проверки памяти и GPU-конкуренции без загрузки моделей.
+
+**Запуск (WSL):**
+
+```bash
+./venv/bin/python3 scripts/run_tests.py -v
+```
+
+**Тесты:**
+
+| Файл | Назначение |
+|------|------------|
+| `test_memory_workflow.py` | Hot → Summarize → Cold lifecycle |
+| `test_preemption.py` | GPU lock priority handshake |
+
+**Моки:**
+
+- `llama-cpp`: Mock `create_completion`, `create_chat_completion`
+- `faster-whisper`: Mock module
+- `sentence-transformers`: Mock `EmbeddingService.embed()`
+- `FAISS/BM25`: Mock `add()`, `search()`, `save()`
+
+---
+
+### 7. CUDA Configuration (WSL2)
 
 > [!IMPORTANT]
 > Используется CUDA Toolkit 12.9 напрямую от NVIDIA, НЕ Debian пакет.
@@ -239,7 +320,7 @@ CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=75" pip install llama-cpp-
 
 ---
 
-### 5. Audio Transcription
+### 8. Audio Transcription
 
 **Проблема:** cuDNN недоступен в WSL для faster-whisper.
 
@@ -250,7 +331,7 @@ CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=75" pip install llama-cpp-
 
 ---
 
-### 6. GPU Concurrency
+### 9. GPU Concurrency
 
 ```python
 # backend/app/core/global_lock.py
@@ -266,7 +347,7 @@ async with gpu_lock:
 
 ---
 
-### 7. Agent Mode (LangChain ReAct)
+### 10. Agent Mode (LangChain ReAct)
 
 **Инструменты:**
 
@@ -428,4 +509,4 @@ npm run dev  # http://localhost:5173
 
 ---
 
-> **Последнее обновление:** 2025-12-18
+> **Последнее обновление:** 2025-12-18 (Integration Test Suite)
