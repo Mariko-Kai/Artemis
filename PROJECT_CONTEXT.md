@@ -420,9 +420,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### Frontend Setup (Windows Terminal)
 
 ```bash
-cd frontend
+
 npm install
-npm run dev  # http://localhost:5173
+npm --prefix frontend run dev  # http://localhost:5173
 ```
 
 ---
@@ -433,6 +433,7 @@ npm run dev  # http://localhost:5173
 |----------|---------|---------|
 | `ggml_cuda_init: failed` | Conflicting nvidia-cuda-toolkit | `./scripts/fix_cuda_wsl.sh` |
 | Whisper crash | Missing cuDNN | Используется CPU mode |
+| Cyrillic input crash | Encoding mismatch in WSL/Windows | Added `safe_input` with fallback encodings |
 | Audio not sent | Old implementation | Auto-send after transcription |
 | Memory OOM | Too many records | Archival service limits |
 

@@ -5,18 +5,11 @@ import typer
 from typing import Optional
 from cli.utils.output import (
     console, print_message, print_thinking, print_error, 
-    print_welcome, print_info
+    print_welcome, print_info, safe_input
 )
 from cli.utils.http_client import get_client
 import sys
 import io
-
-# Fix for Unicode issues in some terminals
-if sys.stdin.encoding != 'utf-8':
-    try:
-        sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
-    except Exception:
-        pass
 
 app = typer.Typer(help="💬 Chat with Artemis LLM")
 
@@ -93,7 +86,7 @@ def chat(
         
         while True:
             try:
-                user_input = console.input("\n[bold blue]You:[/] ").strip()
+                user_input = safe_input("\n[bold blue]You:[/] ").strip()
                 
                 if not user_input:
                     continue

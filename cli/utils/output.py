@@ -8,6 +8,8 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
 from rich.progress import Progress, SpinnerColumn, TextColumn
+import sys
+import io
 
 console = Console()
 error_console = Console(stderr=True)
@@ -131,3 +133,28 @@ def print_welcome() -> None:
         "[dim]Type 'exit' or Ctrl+C to quit[/]",
         border_style="blue"
     ))
+
+
+def safe_input(prompt: str) -> str:
+    """
+    Safely get user input, handling encoding issues common in 
+    Windows/WSL environments when using Cyrillic.
+    """
+    try:
+        return console.input(prompt)
+    except UnicodeDecodeError:
+        # If rich/standard input fails, it's often an encoding mismatch
+        # Force a print of the prompt via rich (it was likely already printed but we re-print for clarity)
+        console.print(prompt, end="")
+        # Read raw bytes from stdin buffer
+        raw_line = sys.stdin.buffer.readline()
+        
+        # Try common encodings for Russian language
+        for encoding in ["utf-8", "cp1251", "cp866", "koi8-r"]:
+            try:
+                return raw_line.decode(encoding).strip()
+            except UnicodeError:
+                continue
+        
+        # Final fallback
+        return raw_line.decode("utf-8", errors="replace").strip()
