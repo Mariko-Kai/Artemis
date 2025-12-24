@@ -13,6 +13,8 @@ from app.db.models import ChatSession, ChatMessage as DbMessage
 from app.db.models import ChatSession, ChatMessage as DbMessage
 from app.db.memory_models import MemoryRecordDB, VectorMapping, AuditLog, ConfigVersion, JobQueue, ArchivedMemoryRecordDB
 from app.routers import sessions
+from app.orchestrator.enhanced_orchestrator import enhanced_orchestrator
+from app.analyzer.contracts import OrchestratorRequest as AgentV2Request, OrchestratorResponse as AgentV2Response
 
 import shutil
 import os
@@ -298,6 +300,32 @@ async def run_agent(request: AgentRunRequest, db: Session = Depends(get_db)):
         return {"answer": result}
     except Exception as e:
         logger.error(f"Agent endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post(f"{settings.API_V1_STR}/agent/v2/run", response_model=AgentV2Response)
+async def run_enhanced_agent(request: AgentV2Request, db: Session = Depends(get_db)):
+    """
+    Enhanced agent endpoint with explicit planning and logging.
+    """
+    logger.info(f"Received enhanced agent goal: {request.query}")
+    try:
+        if request.session_id:
+            # For consistency with v1, we save it to the session DB.
+            save_message(db, request.session_id, "user", request.query)
+            
+        result = await enhanced_orchestrator.run(
+            query=request.query,
+            session_id=request.session_id,
+            force_web=request.force_web,
+            force_reasoning=request.force_reasoning
+        )
+        
+        if request.session_id:
+            save_message(db, request.session_id, "assistant", result.answer)
+            
+        return result
+    except Exception as e:
+        logger.error(f"Agent V2 endpoint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")

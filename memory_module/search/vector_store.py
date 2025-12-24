@@ -90,10 +90,25 @@ class FAISSVectorStore(IVectorStore):
         )
 
     async def init_db(self) -> None:
-        """Initialize database mappings table."""
+        """Initialize database mappings table and sync next_id."""
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("Vector mapping table verified")
+        
+        # Sync next_id from DB using raw SQL to be model-agnostic
+        async with self.async_session() as session:
+            from sqlalchemy import text
+            try:
+                stmt = text("SELECT MAX(faiss_id) FROM vector_mappings")
+                result = await session.execute(stmt)
+                max_id = result.scalar()
+                if max_id is not None:
+                    # next_id should be max_id + 1
+                    self.next_id = max(self.next_id, int(max_id) + 1)
+                    logger.info(f"Synced next_id from DB: {self.next_id}")
+            except Exception as e:
+                logger.warning(f"Failed to sync next_id from DB: {e}")
+                
+        logger.info(f"Vector mapping table verified. Current next_id: {self.next_id}")
 
     def _create_index(self) -> faiss.Index:
         """Create FAISS index."""
@@ -310,13 +325,17 @@ class FAISSVectorStore(IVectorStore):
         for mid, score in zip(memory_ids, scores):
             record = record_dict.get(mid)
             if record:
+                # Handle model attribute differences (Artemis vs MemoryModule)
+                tags = getattr(record, 'tags', getattr(record, 'tags_json', [])) or []
+                metadata = getattr(record, 'record_metadata', getattr(record, 'metadata_json', {})) or {}
+                
                 results.append(SearchResult(
                     id=record.id,
                     content=record.content,
                     score=float(score),
-                    metadata=record.record_metadata,
+                    metadata=metadata,
                     memory_type=record.memory_type,
-                    tags=record.tags,
+                    tags=tags,
                     created_at=record.created_at
                 ))
                 

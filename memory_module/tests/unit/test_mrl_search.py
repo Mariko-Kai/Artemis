@@ -4,10 +4,15 @@ Unit tests for MRL search functionality.
 
 import pytest
 import numpy as np
+import uuid
 from memory_module.search.vector_store import FAISSVectorStore
 
 @pytest.mark.asyncio
 async def test_mrl_addition_and_search(test_settings, temp_index_path):
+    # Generate unique IDs for test isolation
+    id1 = str(uuid.uuid4())
+    id2 = str(uuid.uuid4())
+    
     # Initialize store with MRL (dim=128, storage=384 from conftest)
     store = FAISSVectorStore(
         dimension=test_settings.mrl_index_dim,
@@ -22,6 +27,7 @@ async def test_mrl_addition_and_search(test_settings, temp_index_path):
     # But here we are using store directly. We need to init DB tables.
     from memory_module.storage.models import Base
     async with store.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     # Create dummy vectors
@@ -34,7 +40,7 @@ async def test_mrl_addition_and_search(test_settings, temp_index_path):
     vec2 = [1.0 if i >= 10 and i < 20 else 0.0 for i in range(vec_dim)]
     
     # Add vectors
-    ids = ["id1", "id2"]
+    ids = [id1, id2]
     vectors = [vec1, vec2]
     metadatas = [{"content": "c1"}, {"content": "c2"}]
     
@@ -42,17 +48,15 @@ async def test_mrl_addition_and_search(test_settings, temp_index_path):
     from memory_module.storage.models import MemoryRecordDB
     async with store.async_session() as session:
         session.add(MemoryRecordDB(
-            id="id1", content="c1", memory_type="semantic", 
+            id=id1, content="c1", memory_type="semantic", 
             record_metadata={"content": "c1"}
         ))
         session.add(MemoryRecordDB(
-            id="id2", content="c2", memory_type="semantic",
+            id=id2, content="c2", memory_type="semantic",
             record_metadata={"content": "c2"}
         ))
         await session.commit()
 
-    await store.batch_add(ids, vectors, metadatas)
-    
     await store.batch_add(ids, vectors, metadatas)
     
     assert store.index.ntotal == 2
@@ -79,10 +83,10 @@ async def test_mrl_addition_and_search(test_settings, temp_index_path):
     print(f"Search results for vec1: {results}")
     
     assert len(results) == 1
-    assert results[0].id == "id1"
+    assert results[0].id == id1
     
     # Search for vec2
     results = await store.search(vec2, top_k=1)
     print(f"Search results for vec2: {results}")
     assert len(results) == 1
-    assert results[0].id == "id2"
+    assert results[0].id == id2

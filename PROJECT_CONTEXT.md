@@ -70,9 +70,21 @@ Artemis/
 │       │   ├── archival_service.py # Background archival worker
 │       │   ├── summarization_worker.py  # Auto-summarization
 │       │   └── deferred_processing_service.py  # Hot/Cold memory processing
-│       └── agent/
-│           ├── executor.py         # ReAct agent executor
-│           └── tools.py            # Search & Browser tools
+│       ├── agent/                  # Legacy ReAct Agent
+│       │   ├── executor.py         # ReAct agent executor
+│       │   └── tools.py            # Search & Browser tools
+│       ├── analyzer/               # 🆕 Agent v2: Query Analyzer
+│       │   ├── query_analyzer.py
+│       │   └── contracts.py
+│       ├── orchestrator/           # 🆕 Agent v2: Planning
+│       │   ├── enhanced_orchestrator.py
+│       │   └── execution_planner.py
+│       ├── agents/                 # 🆕 Agent v2: Specialized Agents
+│       │   ├── web_agent.py        # SearXNG
+│       │   ├── reasoning_agent.py  # Groq API
+│       │   └── synthesizer.py
+│       ├── logs/                   # 🆕 Agent v2: Decision Logging
+│       │   └── decision_logger.py
 │
 ├── memory_module/                  # 📦 Standalone Memory Package
 │   ├── __init__.py
@@ -221,6 +233,39 @@ EMBEDDING_MODEL = "Snowflake/snowflake-arctic-embed-m-v2.0"
 EMBEDDING_DIM = 768        # Full dimension
 TRUNCATED_DIM = 256        # For initial filtering (MRL)
 ```
+
+---
+
+### 4. Multi-Agent Architecture (v2)
+
+**Цель:** Детерминированная маршрутизация и использование внешних мощностей для сложных задач без нагрузки на локальный GPU.
+
+```mermaid
+flowchart TD
+    A[User Query] --> B[Query Analyzer]
+    B --> C{Orchestrator}
+    C -->|Needs Web| D[SearXNG Agent]
+    C -->|Needs Reasoning| E[Groq Agent]
+    D --> F[Facts]
+    F --> E
+    E --> G[Reasoning Result]
+    G --> H[Synthesizer]
+    H --> I[User Response]
+    
+    subgraph Decision Logging
+        B -.-> L[Decision Logger]
+        C -.-> L
+        D -.-> L
+        E -.-> L
+    end
+```
+
+**Компоненты:**
+- **Query Analyzer:** Правило-ориентированная классификация запроса (нужен ли поиск, глубина рассуждений).
+- **Decision Logger:** Логирование каждого шага принятия решения в JSONL (`logs/agent_decisions.jsonl`).
+- **SearXNG Agent:** Выполнение структурированного веб-поиска (факты + источники).
+- **Groq Reasoning Agent:** Использование модели `openai/gpt-oss-120b` через Groq API для сложной аналитики.
+- **Synthesizer:** Сборка финального ответа из фактов и результатов рассуждений.
 
 ---
 
@@ -415,7 +460,7 @@ python scripts/download_embedding_model.py # Arctic
 
 # 4. Start backend
 cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --app-dir backend --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend Setup (Windows Terminal)

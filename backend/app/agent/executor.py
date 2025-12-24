@@ -15,38 +15,29 @@ class LocalLLM(LLM):
     def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
         model = llm_engine.get_model()
         
-        # We need to run this with the lock
-        # But this _call method is sync, expected by LangChain (if not using async LLM)
-        # And our lock is async. 
-        # So we use a threading approach similar to the tools, or we assume
-        # this is running in a thread pool executor.
-        
-        # However, create_chat_completion is fairly stateless on the python side 
-        # (mostly calling C++), but the lock is critical.
-        
         logger.info("LocalLLM: Acquiring GPU Lock...")
         
         # Helper to run async lock and inference synchronously
         def run_inference():
             async def _async_infer():
                 async with gpu_lock.request_priority_access():
-                    # Simple completion for ReAct agent
-                    # Phi-3 instruct format handling might be needed here
-                    # For now, we pass the raw prompt as user message
-                    # ReAct prompts are usually big blocks of text.
+                    # Phi-3 Instruct Format
+                    # <|user|>\n...<|end|>\n<|assistant|>
                     
-                    # NOTE: Phi-3 is an Instruct model. It expects <|user|>...<|assistant|>.
-                    # LangChain's ReAct agent generates a "Question: ... Thought: ..." string.
-                    # We should wrap it in instruct tokens for better performance.
-                    
-                    formatted_prompt = f"<|user|>\n{prompt}<|end|>\n<|assistant|>"
-                    
+                    # Ensure prompt is wrapped if it's not already
+                    if "<|user|>" not in prompt:
+                        formatted_prompt = f"<|user|>\n{prompt}<|end|>\n<|assistant|>"
+                    else:
+                        formatted_prompt = prompt
+
                     output = await asyncio.to_thread(
                         model.create_completion,
                         prompt=formatted_prompt,
-                        max_tokens=612,
-                        stop=stop or ["Observation:"], # ReAct stop token
-                        temperature=0.7
+                        max_tokens=2048, # Increased for detailed answers
+                        stop=stop or ["observation:", "<|end|>", "Observation:"], 
+                        temperature=0.1, # Lower temperature for reasoning
+                        repeat_penalty=1.1, # Prevent loops
+                        top_p=0.9
                     )
                     return output["choices"][0]["text"]
             
@@ -57,7 +48,6 @@ class LocalLLM(LLM):
                 asyncio.set_event_loop(loop)
                 
             if loop.is_running():
-                # Nesting fix
                 import threading
                 result = []
                 def target():
@@ -78,40 +68,63 @@ class LocalLLM(LLM):
     def _llm_type(self) -> str:
         return "local-llama-cpp"
 
-# Standard ReAct prompt
-REACT_PROMPT = """Answer the following questions as best you can. You have access to the following tools:
+# Optimized ReAct Prompt for functionality
+REACT_PROMPT = """You are Artemis, a helpful AI agent.
+Solve the user's request using the available tools.
 
+TOOLS:
+------
 {tools}
 
-Use the following format:
+CONSTRAINTS:
+------------
+1. Do NOT use placeholders (e.g., [insert value]). If you cannot find info, say "I could not find the information".
+2. Round long numbers to 1-2 decimal places (e.g., 23.45 instead of 23.45678).
+3. Be concise.
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+FORMAT:
+-------
+To use a tool, use the following format:
 
-Begin!
+thought: Think about what to do next
+action: the action to take, should be one of [{tool_names}]
+action_input: the input to the action
+observation: the result of the action
 
-Question: {input}
-Thought:{agent_scratchpad}"""
+... (this thought/action/action_input/observation can repeat N times)
+
+When you have the final answer:
+thought: I know the final answer
+final_answer: the final answer to the original input question
+
+USER REQUEST:
+-------------
+{input}
+
+HISTORY:
+--------
+{agent_scratchpad}
+"""
 
 import re
 
 class AgentExecutorService:
     def parse_action(self, llm_output: str):
-        # Look for Action: ... Action Input: ...
-        # Regex covers multi-line action input if needed, but ReAct usually uses single line
-        action_pattern = r"Action:\s*(.*?)\nAction Input:\s*(.*)"
-        match = re.search(action_pattern, llm_output, re.DOTALL)
+        # Case insensitive parsing
+        llm_output = llm_output.strip()
+        
+        # Check for Final Answer
+        # Matches: final_answer: ... or Final Answer: ...
+        final_answer_match = re.search(r"(?:final_answer|Final Answer):\s*(.*)", llm_output, re.IGNORECASE | re.DOTALL)
+        if final_answer_match:
+             return "Final Answer", final_answer_match.group(1).strip()
+
+        # Look for action: ... action_input: ...
+        # Matches action: or Action:
+        action_pattern = r"(?:action|Action):\s*(.*?)\n(?:action_input|Action Input):\s*(.*)"
+        match = re.search(action_pattern, llm_output, re.DOTALL | re.IGNORECASE)
         
         if not match:
-            # Check for Final Answer
-            if "Final Answer:" in llm_output:
-                return "Final Answer", llm_output.split("Final Answer:")[-1].strip()
             return None, None
             
         action = match.group(1).strip()
@@ -150,7 +163,9 @@ class AgentExecutorService:
             
             # Parse output
             # We strip trailing newlines and observations if the model hallucinated them
-            output = output.split("Observation:")[0].strip()
+            # Split by observation: or Observation:
+            if "observation:" in output.lower():
+                output = re.split(r"observation:", output, flags=re.IGNORECASE)[0].strip()
             
             # Append to scratchpad
             scratchpad += output + "\n"
@@ -160,9 +175,18 @@ class AgentExecutorService:
             if action == "Final Answer":
                 return action_input
             
-            if action and action in tools_map:
-                logger.info(f"Executing Tool: {action} with Input: {action_input}")
-                tool = tools_map[action]
+            # Normalize action name to match tools dict keys (usually Title Case)
+            # But the model might output 'search' vs 'Search'
+            matched_tool_name = None
+            if action:
+                for tool_name in tools_map.keys():
+                    if action.lower() == tool_name.lower():
+                        matched_tool_name = tool_name
+                        break
+            
+            if matched_tool_name:
+                logger.info(f"Executing Tool: {matched_tool_name} with Input: {action_input}")
+                tool = tools_map[matched_tool_name]
                 try:
                     # Tools in ALL_TOOLS are LangChain tools, so they have .run method
                     observation = tool.run(action_input)
@@ -170,21 +194,21 @@ class AgentExecutorService:
                     observation = f"Error executing tool: {e}"
                 
                 logger.info(f"Observation: {observation}")
-                scratchpad += f"Observation: {observation}\nThought:"
+                scratchpad += f"observation: {observation}\nthought:"
             else:
                 # If no action found, or invalid action
-                if "Final Answer:" in output:
-                     return output.split("Final Answer:")[-1].strip()
+                if "final_answer:" in output.lower():
+                     return re.split(r"final_answer:", output, flags=re.IGNORECASE)[-1].strip()
                      
-                # Force a thought? Or stop?
-                # If model didn't produce an action, maybe it's just thinking or failed format.
-                # We can try to continue generating or stop.
-                # For now, treat as Final Answer if it looks like text, or error.
                 logger.warning("No Action found in output.")
-                # Attempt to treat the whole thing as answer if it's the first step?
-                # Or just return it.
-                if step == 0:
+                if step == 0 and len(output) > 20: # Heuristic: if it talks a lot, maybe it answered?
                     return output
+                
+                # If it's just a thought, continue
+                if "thought:" in output.lower() and "action:" not in output.lower():
+                    scratchpad += "observation: Please continue to action.\n"
+                    continue
+                    
                 return output # Fallback
 
         return "Agent stopped: Max steps reached."

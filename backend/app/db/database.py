@@ -2,7 +2,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./sessions.db"
+from app.core.config import settings
+
+# Convert async URL to sync URL for standard SQLAlchemy engine
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL.replace("sqlite+aiosqlite://", "sqlite://")
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

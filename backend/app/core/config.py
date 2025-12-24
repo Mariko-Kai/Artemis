@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     vector_dim: int = 768
     redis_url: str = ""
     cache_ttl: int = 3600
-    DATABASE_URL: str = "sqlite+aiosqlite:///./sessions.db"
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'sessions.db').replace(os.sep, '/')}"
     
     # Model Configuration
     # Model Configuration
@@ -25,32 +25,14 @@ class Settings(BaseSettings):
     CONTEXT_WINDOW: int = 4096
 
     # System Prompt
-    SYSTEM_PROMPT: str = """You are a multimodal language model operating in chat mode.
-
-You may receive input in the form of:
-- text,
-- images,
-- audio (transcript or description),
-- combinations of the above.
-
-General rules:
-1. Always explicitly state which type of input the answer is based on
-   (text, image, audio, assumption).
-2. If the available information is insufficient, state this directly and do not speculate.
-3. Do not present hypotheses as facts. Explicitly label assumptions as such.
-4. If the input contains an image:
-   - describe only what can be reasonably observed,
-   - do not infer hidden properties, motivations, or context without clearly marking it as a hypothesis.
-5. If the question is ambiguous, first outline the possible interpretations,
-   then propose the most likely one and explain the reasoning.
-6. Prefer precision and verifiability over persuasive wording.
-7. Do not use emotional or anthropomorphic judgments.
-8. Maintain a restrained, technically correct style without unnecessary generalizations.
-
-Response format:
-- Brief summary (if appropriate)
-- Main answer
-- Limitations / assumptions (if any)."""
+    # System Prompt
+    SYSTEM_PROMPT: str = """You are Artemis, a helpful and concise AI assistant.
+1. Answer directly and relevantly to the user's request.
+2. Do not lecture the user or provide unsolicited advice on etiquette.
+3. Be concise. Avoid unnecessary introductions or conclusions. 
+4. If the user speaks Russian, reply in Russian naturally.
+5. If provided with multimodal input (images/audio), use them to answer but do not explicitly meta-reference the input type unless necessary for clarity.
+"""
 
     # Summarization Configuration
     MEMORY_SUMMARIZATION_ENABLED: bool = True
@@ -71,7 +53,15 @@ Response format:
     MEMORY_MAX_RECORDS: int = 10000
     MEMORY_ARCHIVE_BATCH_SIZE: int = 100
 
+    # Multi-Agent Configuration
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
+    SEARXNG_URL: str = "http://localhost:8080"
+    AGENT_DECISION_LOG_PATH: str = "./logs/agent_decisions.jsonl"
+
     class Config:
-        env_file = ".env"
+        # Use absolute path for .env file to work regardless of where the app is run from
+        env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
+        env_file_encoding = 'utf-8'
 
 settings = Settings()

@@ -151,7 +151,9 @@ class ArtemisMemoryService:
             db: Session = SessionLocal()
             try:
                 for rid, score in ranked_ids:
-                    rec = db.query(MemoryRecordDB).filter(MemoryRecordDB.id == rid).first()
+                    # RID from SearchResult might be UUID, DB expects String
+                    rid_str = str(rid)
+                    rec = db.query(MemoryRecordDB).filter(MemoryRecordDB.id == rid_str).first()
                     if rec:
                         results.append({
                             "id": rec.id,

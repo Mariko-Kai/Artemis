@@ -20,6 +20,12 @@ def mock_lexical_index():
     return index
 
 @pytest.fixture
+def mock_metadata_store():
+    store = AsyncMock()
+    store.get_recent_memories.return_value = []
+    return store
+
+@pytest.fixture
 def settings():
     return Settings(
         temporal_half_life_hours=2.0,
@@ -27,7 +33,7 @@ def settings():
     )
 
 @pytest.mark.asyncio
-async def test_hybrid_search_fusion(mock_vector_store, mock_lexical_index, settings):
+async def test_hybrid_search_fusion(mock_vector_store, mock_lexical_index, mock_metadata_store, settings):
     # Setup results
     id1 = uuid.uuid4()
     id2 = uuid.uuid4()
@@ -44,7 +50,7 @@ async def test_hybrid_search_fusion(mock_vector_store, mock_lexical_index, setti
     mock_vector_store.search.return_value = [vec_result]
     mock_lexical_index.search.return_value = [lex_result]
 
-    service = HybridSearchService(settings, mock_vector_store, mock_lexical_index)
+    service = HybridSearchService(settings, mock_vector_store, mock_lexical_index, mock_metadata_store)
     
     results = await service.search("query", [0.1], top_k=5)
     
@@ -55,7 +61,7 @@ async def test_hybrid_search_fusion(mock_vector_store, mock_lexical_index, setti
     assert id2 in ids
 
 @pytest.mark.asyncio
-async def test_normalization_logic(mock_vector_store, mock_lexical_index, settings):
+async def test_normalization_logic(mock_vector_store, mock_lexical_index, mock_metadata_store, settings):
     id1 = uuid.uuid4()
     id2 = uuid.uuid4()
     id3 = uuid.uuid4()
@@ -71,7 +77,7 @@ async def test_normalization_logic(mock_vector_store, mock_lexical_index, settin
     mock_vector_store.search.return_value = [v1, v2]
     mock_lexical_index.search.return_value = [l1, l2]
     
-    service = HybridSearchService(settings, mock_vector_store, mock_lexical_index)
+    service = HybridSearchService(settings, mock_vector_store, mock_lexical_index, mock_metadata_store)
     results = await service.search("q", [], 5, hybrid_weight=0.5)
     
     # Result 1 (id1): Matches both
@@ -85,7 +91,7 @@ async def test_normalization_logic(mock_vector_store, mock_lexical_index, settin
     assert r_dict[str(id1)].score == pytest.approx(0.5, abs=0.01)
     
 @pytest.mark.asyncio
-async def test_temporal_boosting(mock_vector_store, mock_lexical_index, settings):
+async def test_temporal_boosting(mock_vector_store, mock_lexical_index, mock_metadata_store, settings):
     id1 = uuid.uuid4()
     id2 = uuid.uuid4()
     
@@ -97,7 +103,7 @@ async def test_temporal_boosting(mock_vector_store, mock_lexical_index, settings
     
     mock_vector_store.search.return_value = [r1, r2]
     
-    service = HybridSearchService(settings, mock_vector_store, mock_lexical_index)
+    service = HybridSearchService(settings, mock_vector_store, mock_lexical_index, mock_metadata_store)
     results = await service.search("q", [], 5, hybrid_weight=1.0) # Pure vector
     
     r_dict = {str(r.id): r for r in results}
